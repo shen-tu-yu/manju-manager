@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>漫剧素材管理</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ======================= 左侧 ======================= -->
+  <aside id="sidebar">
+    <div class="side-head">
+      <span class="logo">🎬 <b id="appTitle">漫剧素材</b></span>
+      <button class="icon-btn" id="btnAddRoot" title="添加文件夹">＋</button>
+    </div>
+
+    <div class="side-scroll">
+      <div class="section" id="rootSection">
+        <div class="section-title">已挂载的文件夹</div>
+        <div id="rootList"></div>
+      </div>
+
+      <div class="section" id="treeSection">
+        <div class="section-title">
+          目录
+          <button class="mini-btn" id="btnNewFolderSide" title="在当前目录新建文件夹">＋</button>
+        </div>
+        <div id="tree"></div>
+      </div>
+    </div>
+
+    <div class="side-foot">
+      <button class="foot-btn" id="btnDeliver">📤 投放素材助手</button>
+      <button class="foot-btn" id="btnTrash">🗑 回收站</button>
+      <button class="foot-btn" id="btnSettings">⚙ 设置</button>
+      <button class="foot-btn" id="btnHelp">? 帮助</button>
+    </div>
+  </aside>
+
+  <div id="splitter"></div>
+
+  <!-- ======================= 右侧 ======================= -->
+  <main id="main">
+    <header id="toolbar">
+      <button class="icon-btn" id="btnBack" title="返回上一级 (Backspace)">←</button>
+      <button class="icon-btn" id="btnRefresh" title="刷新 (F5)">⟳</button>
+      <nav id="breadcrumb"></nav>
+
+      <div class="spacer"></div>
+
+      <div id="logWrap">
+        <button id="btnLog" title="查看操作日志">
+          <span class="log-ico">📋</span>
+          <span id="logLatest">暂无操作</span>
+        </button>
+        <div id="logPanel" class="hidden">
+          <div class="log-head">
+            <b>操作日志</b>
+            <span class="spacer"></span>
+            <button class="btn mini" id="logClear">清空</button>
+          </div>
+          <div class="log-list" id="logList"></div>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <input type="text" id="searchInput" placeholder="搜索文件名…" autocomplete="off">
+        <button class="icon-btn tiny hidden" id="btnClearSearch">×</button>
+      </div>
+
+      <select id="sortSelect" title="排序">
+        <option value="name-asc">名称 ↑</option>
+        <option value="name-desc">名称 ↓</option>
+        <option value="mtime-desc">最新优先</option>
+        <option value="mtime-asc">最旧优先</option>
+        <option value="size-desc">最大优先</option>
+        <option value="size-asc">最小优先</option>
+      </select>
+
+      <select id="filterSelect" title="筛选">
+        <option value="all">全部</option>
+        <option value="image">只看图片</option>
+        <option value="video">只看视频</option>
+        <option value="audio">只看音频</option>
+        <option value="other">只看其他</option>
+      </select>
+
+      <div class="view-switch" id="viewSwitch">
+        <button data-view="grid" class="active" title="网格">▦</button>
+        <button data-view="large" title="大图">▣</button>
+        <button data-view="list" title="列表">☰</button>
+      </div>
+
+      <input type="range" id="zoomRange" min="120" max="420" value="200" title="缩略图大小">
+    </header>
+
+    <div id="content">
+      <div id="empty" class="empty hidden"></div>
+      <div id="grid" class="grid"></div>
+      <div id="listWrap" class="hidden"></div>
+    </div>
+
+    <footer id="statusbar">
+      <span id="statLeft">就绪</span>
+      <span class="spacer"></span>
+      <span id="statActions"></span>
+      <span id="statSel"></span>
+    </footer>
+  </main>
+</div>
+
+<!-- ======================= 灯箱 ======================= -->
+<div id="lightbox" class="hidden">
+  <div class="lb-top">
+    <span id="lbName"></span>
+    <span class="spacer"></span>
+    <span id="lbInfo"></span>
+    <button class="icon-btn" id="lbDownload" title="下载">⤓</button>
+    <button class="icon-btn" id="lbClose" title="关闭 (Esc)">✕</button>
+  </div>
+  <button class="lb-nav prev" id="lbPrev">‹</button>
+  <div class="lb-stage" id="lbStage"></div>
+  <button class="lb-nav next" id="lbNext">›</button>
+  <div class="lb-strip" id="lbStrip"></div>
+</div>
+
+<!-- ======================= 模态框 ======================= -->
+<div id="modalMask" class="hidden">
+  <div id="modalBox"></div>
+</div>
+
+<!-- ======================= 右键菜单 ======================= -->
+<div id="ctxMenu" class="hidden"></div>
+
+<!-- ======================= 拖拽上传遮罩 ======================= -->
+<div id="dropMask" class="hidden"><div>松开鼠标即可上传到当前文件夹</div></div>
+
+<!-- ======================= 提示条 ======================= -->
+<div id="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

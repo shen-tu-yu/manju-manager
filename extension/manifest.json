@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "漫剧素材助手 · 豆包",
+  "version": "1.0.0",
+  "description": "在豆包页面加一个素材侧边栏，从本地素材库点一下就把文件送进豆包输入框",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.doubao.com/*",
+        "https://doubao.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ]
+}

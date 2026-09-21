@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>安装 · 漫剧素材助手（豆包）</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 60px;
+    background: #14161a; color: #e6e9ef;
+    font: 14px/1.7 "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  .sub { color: #6b7484; font-size: 13px; margin-bottom: 26px; }
+  .card {
+    background: #1b1e25; border: 1px solid #2c313c;
+    border-radius: 12px; padding: 20px 22px; margin-bottom: 18px;
+  }
+  h2 { font-size: 14px; margin: 0 0 12px; color: #98a1b0; font-weight: 600; letter-spacing: .5px; }
+  ol { margin: 0; padding-left: 22px; }
+  ol li { margin-bottom: 10px; }
+  code, .kbd {
+    background: #0f1115; border: 1px solid #2c313c; border-radius: 5px;
+    padding: 1px 7px; font: 12.5px Consolas, monospace; color: #9ecbff;
+  }
+  .kbd { color: #e6e9ef; border-color: #3a4352; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 22px; border-radius: 8px; border: 0; cursor: pointer;
+    background: #4b9cff; color: #fff; font-size: 14px; font-weight: 600;
+    font-family: inherit; transition: background .15s, transform .1s;
+  }
+  .btn:hover { background: #63aaff; }
+  .btn:active { transform: scale(.97); }
+  .btn.ok { background: #35c88a; }
+  .msg { margin-top: 12px; font-size: 13px; min-height: 20px; }
+  .msg.good { color: #35c88a; }
+  .msg.bad { color: #ff9a94; }
+  .warn {
+    background: #2a2118; border: 1px solid #6b5726; color: #f5d08a;
+    border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-bottom: 18px;
+  }
+  pre {
+    margin: 0; max-height: 320px; overflow: auto;
+    background: #0f1115; border: 1px solid #2c313c; border-radius: 8px;
+    padding: 14px; font: 12px/1.6 Consolas, monospace;
+    color: #8fa2bd; white-space: pre; user-select: text;
+  }
+  .tag { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11.5px;
+    background: #21252e; border: 1px solid #2c313c; color: #98a1b0; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>漫剧素材助手 · 豆包 <span class="tag">Tampermonkey 脚本</span></h1>
+  <div class="sub">在豆包页面加一个素材侧边栏，从你的素材库点一下就把文件送进豆包输入框。</div>
+
+  <div class="warn">
+    <b>为什么不用「一键安装」？</b><br>
+    Tampermonkey 的安装中间页在 <code>https://www.tampermonkey.net</code> 上，它去拉 <code>http://127.0.0.1:8899</code>
+    会被浏览器当成混合内容拦掉，所以那个页面会卡住不动。手动粘一次就好，十几秒的事。
+  </div>
+
+  <div class="card">
+    <h2>安装步骤</h2>
+    <ol>
+      <li>点下面的 <b>复制脚本代码</b> 按钮</li>
+      <li>点 Edge 工具栏的 <b>Tampermonkey 图标</b> → <b>管理面板</b></li>
+      <li>点面板里的 <b>➕</b>（添加新脚本）</li>
+      <li>在编辑区按 <span class="kbd">Ctrl + A</span> 全选模板内容 → <span class="kbd">Ctrl + V</span> 粘贴</li>
+      <li>按 <span class="kbd">Ctrl + S</span> 保存</li>
+      <li><b>刷新这个页面（F5）</b> —— 右上角应该出现绿色的 <b>✅ 脚本已装</b><br>
+          <span style="color:#6b7484;font-size:12.5px">
+            看到了 = 安装成功；没看到 = 安装没生效（多半是粘贴时没覆盖掉 Tampermonkey 的默认模板）</span></li>
+      <li>再去打开 <code>https://www.doubao.com/chat/</code> —— 右上角出现蓝色的 <b>📁 素材</b></li>
+    </ol>
+    <div style="margin-top:18px">
+      <button class="btn" id="copyBtn">📋 复制脚本代码</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>脚本内容（也可以在这里手动全选复制）</h2>
+    <pre id="code">加载中…</pre>
+  </div>
+
+  <div class="card">
+    <h2>用之前确认两件事</h2>
+    <ol>
+      <li><code>D:\文件管理\启动.bat</code> 已经双击运行（侧边栏的素材列表从它那里来）</li>
+      <li>Tampermonkey 里这个脚本处于 <b>已启用</b> 状态（面板里开关是蓝的）</li>
+    </ol>
+  </div>
+
+</div>
+
+<script>
+  const msgEl = document.getElementById('msg');
+  const codeEl = document.getElementById('code');
+  const btn = document.getElementById('copyBtn');
+  let source = '';
+
+  function say(text, good) {
+    msgEl.textContent = text;
+    msgEl.className = 'msg ' + (good ? 'good' : 'bad');
+  }
+
+  fetch('doubao-helper.js')
+    .then((r) => r.text())
+    .then((text) => {
+      source = text;
+      codeEl.textContent = text;
+    })
+    .catch((e) => {
+      codeEl.textContent = '读取失败：' + e.message;
+      say('读不到脚本文件，确认服务在运行', false);
+    });
+
+  btn.onclick = async () => {
+    if (!source) return say('脚本还没加载好，稍等一下', false);
+    try {
+      await navigator.clipboard.writeText(source);
+      btn.classList.add('ok');
+      btn.textContent = '✓ 已复制';
+      say('已经复制到剪贴板 —— 现在去 Tampermonkey 里「添加新脚本」粘贴保存', true);
+      setTimeout(() => {
+        btn.classList.remove('ok');
+        btn.textContent = '📋 复制脚本代码';
+      }, 2600);
+    } catch (e) {
+      // 剪贴板被拒时，退化成「帮你选中」，用户按 Ctrl+C 即可
+      const range = document.createRange();
+      range.selectNodeContents(codeEl);
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      say('自动复制被浏览器拦了，已经帮你选中下面的代码，按 Ctrl+C 复制即可', false);
+    }
+  };
+</script>
+</body>
+</html>

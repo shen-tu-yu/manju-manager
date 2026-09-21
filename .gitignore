@@ -1,0 +1,17 @@
+# 运行时数据 —— 不进版本库
+data.db
+data.db-wal
+data.db-shm
+debug.log
+clipboard.log
+*.bak
+
+# 回收站 / 系统垃圾
+.recycle/
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
