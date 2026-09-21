@@ -237,10 +237,24 @@ D:\文件管理\
 ├── extension\         Edge 扩展版（可选）
 │   ├── manifest.json
 │   └── content.js
-└── README.md
+├── README.md          使用说明（就是这份）
+└── CODE_MAP.md        代码地图 —— 改代码前先看它
 ```
 
 **你的素材文件夹不会被塞进任何程序文件**，唯一例外是每个被管理目录下会有一个 `.recycle` 隐藏文件夹（回收站）。删掉它等于清空回收站。
+
+### 要改代码的话
+
+先看 **`CODE_MAP.md`**：33 个 API 的行号、每个功能的位置、故障排查表、
+以及**五个踩过的坑**（含"拆分函数后必须验证调用次数"这类血泪教训）。
+
+项目有 git 备份：
+
+```powershell
+cd D:\文件管理
+git log --oneline          # 看历史
+git checkout -- server.js  # 撤销某个文件的改动
+```
 
 ---
 
