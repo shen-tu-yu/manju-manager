@@ -189,6 +189,30 @@ function psArgs(script) {
   return ['-NoProfile', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
 }
 
+/**
+ * 剪贴板是 Windows 的全局独占资源：同一时刻只允许一个进程打开它。
+ * 这里用一条 Promise 链把写入操作串起来，避免快速连点时互相抢占。
+ */
+let clipboardChain = Promise.resolve();
+function withClipboardLock(fn) {
+  const run = clipboardChain.then(fn, fn);
+  clipboardChain = run.then(() => { }, () => { });
+  return run;
+}
+
+/** PowerShell 走 stderr 时会吐 CLIXML（进度/错误都在里面），这里挑出人话 */
+function cleanPsOutput(stderr, stdout) {
+  const raw = `${stderr || ''}\n${stdout || ''}`;
+  const errs = raw.match(/<S S="Error">[\s\S]*?<\/S>/g);
+  if (errs) {
+    return errs.map((x) => x.replace(/<[^>]*>/g, '')
+      .replace(/_x000D_/g, '').replace(/_x000A_/g, ' '))
+      .join(' ').replace(/\s+/g, ' ').trim();
+  }
+  return raw.replace(/#< CLIXML[\s\S]*?<\/Objs>/g, '')
+    .replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function runCommand(cmd, args, timeoutMs) {
   return new Promise((resolve) => {
     const { spawn } = require('child_process');
@@ -1183,19 +1207,23 @@ const server = http.createServer(async (req, res) => {
       // 路径里可能有空格/括号/中文，用单引号转义后整块 Base64 传过去
       const list = paths.map((x) => `'${x.replace(/'/g, "''")}'`).join(',');
       LOG(`clipboard: 准备写入 ${paths.length} 个路径`);
-      const r = await runCommand('powershell.exe',
-        psArgs(`[Console]::OutputEncoding=[Text.Encoding]::UTF8; Set-Clipboard -LiteralPath @(${list})`),
-        20000);
-      LOG(`clipboard: 退出码=${r.code}  stderr=${r.stderr ? r.stderr.trim().slice(0, 200) : '无'}`);
 
-      // 写完回读一次 —— 这一步能确定「是没写进去」还是「写进去了但你粘不到」
-      const chk = await runCommand('powershell.exe',
-        psArgs('[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard -Format FileDropList'), 20000);
-      const back = (chk.stdout || '(空)').trim().replace(/\s+/g, ' ');
+      const PS_HEAD = `$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; `;
+
+      // 串行执行：剪贴板是全局独占资源，并发写会互相踩
+      const { r, back } = await withClipboardLock(async () => {
+        const res = await runCommand('powershell.exe',
+          psArgs(`${PS_HEAD}Set-Clipboard -LiteralPath @(${list})`), 20000);
+        // 写完回读一次 —— 判断是「没写进去」还是「写进去了但你粘不到」
+        const chk = await runCommand('powershell.exe',
+          psArgs(`${PS_HEAD}Get-Clipboard -Format FileDropList`), 20000);
+        return { r: res, back: (chk.stdout || '(空)').trim().replace(/\s+/g, ' ') };
+      });
+      LOG(`clipboard: 退出码=${r.code}  stderr=${r.stderr ? cleanPsOutput(r.stderr, '').slice(0, 200) : '无'}`);
       LOG(`clipboard: 写完回读 = ${back.slice(0, 220)}`);
       if (r.code !== 0) {
-        const detail = r.stderr.trim() || r.stdout.trim() || ('退出码 ' + r.code);
-        throw new HttpError(500, '放进剪贴板失败：' + String(detail).slice(0, 220));
+        const detail = cleanPsOutput(r.stderr, r.stdout) || ('退出码 ' + r.code);
+        throw new HttpError(500, '放进剪贴板失败：' + detail.slice(0, 220));
       }
       return sendJSON(res, 200, { ok: true, count: paths.length, paths });
     }

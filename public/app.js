@@ -2461,7 +2461,6 @@ function bindLogEvents() {
     $('#btnLog').classList.remove('active');
   });
 
-  bindNavEvents();
 }
 
 /** 导航按钮 / 侧栏按钮 / 搜索框 */
@@ -2487,7 +2486,6 @@ function bindNavEvents() {
     loadDir(S.path);
   };
 
-  bindContentEvents();
 }
 
 /** 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 */
@@ -2539,7 +2537,6 @@ function bindContentEvents() {
     if (!ev.target.closest('#ctxMenu')) hideCtxMenu();
   });
 
-  bindOverlayEvents();
 }
 
 /** 灯箱 / 模态遮罩 / 左侧分割条拖拽 */
@@ -2568,7 +2565,6 @@ function bindOverlayEvents() {
     window.addEventListener('mouseup', () => { dragging = false; sp.classList.remove('dragging'); document.body.style.cursor = ''; });
   })();
 
-  bindDragDropEvents();
 }
 
 /** 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） */
@@ -2670,7 +2666,6 @@ function bindDragDropEvents() {
     }
   });
 
-  bindKeyboardEvents();
 }
 
 /**
