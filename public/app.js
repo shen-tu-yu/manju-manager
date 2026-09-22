@@ -2560,14 +2560,29 @@ function clearDropTargets() {
 }
 
 /**
- * 是否是从系统（资源管理器）拖进来的文件。
- * 只看 dataTransfer.types 里的 'Files'：它同时覆盖外部文件拖入和「在桌面/Finder 里拖文件」，
- * 而网页内部拖拽（S.dragPaths）虽然也带 Files 类型，调用处一律先排除 S.dragPaths。
+ * 拖进来的 dataTransfer 里有没有**真实文件**（资源管理器 / 桌面拖进来的那种）。
+ * 内部拖拽只 setData('text/plain')，所以 types 里不含 'Files' —— 这是两条路径的分界线。
  */
 function isFileDrag(ev) {
   const dt = ev.dataTransfer;
   if (!dt) return false;
   return Array.from(dt.types || []).includes('Files');
+}
+
+/**
+ * 拖拽判据的**唯一出口** —— 页面上同时存在三种完全不同的拖拽，必须在这里裁决，
+ * 不许各个 handler 自己判（判据散开就会串，上传/移动互相污染）。
+ *
+ *   'internal' 网页内部拖拽（把素材拖到目录树 = 移动）：靠 S.dragPaths 这个内存标志，最可靠，**永远优先**
+ *   'external' 从资源管理器拖进来的真实文件 = 上传
+ *   'other'    从别的网页拖来的元素 / 链接 / 选中文字：**有意什么都不做**
+ *
+ * 注意：不要用本函数去判 `dragleave` —— Chrome 在 dragleave 时 dataTransfer.types 常常是空数组，
+ * 会判成 'other'。那边要看 dragActive 标志（见 bindDragDropEvents）。
+ */
+function dragKind(ev) {
+  if (S.dragPaths && S.dragPaths.length) return 'internal';
+  return isFileDrag(ev) ? 'external' : 'other';
 }
 
 /* ===================== 事件绑定 ===================== */
@@ -2745,6 +2760,12 @@ function bindOverlayEvents() {
 
 /** 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） */
 function bindDragDropEvents() {
+  // 外部文件拖拽的共享状态（声明放函数开头，dragend 也要用）
+  // dragActive = 这次拖拽是不是"从外面拖文件进来"；dragleave 必须靠它判断，
+  // 不能重判 dataTransfer.types —— Chrome 在 dragleave 时 types 是空的。
+  let dragActive = false;
+  let dragDepth = 0;
+
   // 拖拽：内部移动
   content().addEventListener('dragstart', (ev) => {
     const el = ev.target.closest('.card, .lrow');
@@ -2809,35 +2830,58 @@ function bindDragDropEvents() {
     document.body.classList.remove('dragging');
     setDropHints(false);
     S.dragPaths = null;
+    // 拖拽被取消（按 Esc / 拖出窗口）时不会触发 dragleave，这里兜底把遮罩收掉
+    dragDepth = 0;
+    dragActive = false;
+    $('#dropMask').classList.add('hidden');
   });
 
-  // 拖拽：外部文件上传
-  let dragDepth = 0;
+  // 拖拽：外部文件上传（内部拖拽在上面几个分支里就被接管了，这里只认 'external'）
   window.addEventListener('dragenter', (ev) => {
-    if (isFileDrag(ev) && !S.dragPaths) {
-      dragDepth++;
-      $('#dropMask').classList.remove('hidden');
+    const kind = dragKind(ev);
+    if (kind === 'internal') {        // 内部拖拽：把外部那套状态彻底清干净
+      dragActive = false; dragDepth = 0;
+      $('#dropMask').classList.add('hidden');
+      return;
     }
+    if (kind !== 'external') return;
+    dragActive = true;
+    dragDepth++;
+    $('#dropMask').classList.remove('hidden');
   });
+
   window.addEventListener('dragleave', () => {
-    if (--dragDepth <= 0) { dragDepth = 0; $('#dropMask').classList.add('hidden'); }
-  });
-  window.addEventListener('dragover', (ev) => {
-    // 内部拖拽（移动素材）
-    if (S.dragPaths) { ev.preventDefault(); moveDragGhost(ev.clientX, ev.clientY); return; }
-    // 外部文件拖入：必须显式取消默认行为，否则浏览器认为页面不是放置目标，
-    // 松手时直接用新标签页打开这个文件（页面被“截胡”，上传永远收不到）。
-    if (isFileDrag(ev)) {
-      ev.preventDefault();
-      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+    if (!dragActive) return;          // 不是外部文件拖拽：完全不碰计数（和 dragenter 对称）
+    if (--dragDepth <= 0) {
+      dragDepth = 0; dragActive = false;
+      $('#dropMask').classList.add('hidden');
     }
   });
+
+  window.addEventListener('dragover', (ev) => {
+    const kind = dragKind(ev);
+    if (kind === 'internal') {        // 内部拖拽（移动素材）
+      ev.preventDefault();
+      moveDragGhost(ev.clientX, ev.clientY);
+      return;
+    }
+    if (kind !== 'external') return;
+    // 外部文件拖入：必须显式取消默认行为，否则浏览器认为页面不是放置目标，
+    // 松手时直接用新标签页打开这个文件（页面被"截胡"，上传永远收不到）。
+    dragActive = true;                // dragover 时 types 一定读得到，用它兜 dragenter 的漏
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+  });
+
   window.addEventListener('drop', (ev) => {
     // 只要 drop 落在页面里，就无条件阻止浏览器默认动作（打开文件 / 导航）
     ev.preventDefault();
     dragDepth = 0;
+    dragActive = false;
     $('#dropMask').classList.add('hidden');
-    if (S.dragPaths) {
+
+    const kind = dragKind(ev);
+    if (kind === 'internal') {
       // 拖到了空白处 = 取消，什么都不做
       S.dragPaths = null;
       hideDragGhost();
@@ -2845,6 +2889,7 @@ function bindDragDropEvents() {
       clearDropTargets();
       return;
     }
+    if (kind !== 'external') return;  // 网页元素 / 链接：有意不处理
     if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) {
       uploadFiles(Array.from(ev.dataTransfer.files));
     }
