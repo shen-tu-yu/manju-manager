@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         投放素材助手 · 豆包
 // @namespace    manju-fm
-// @version      1.4.0
-// @description  在豆包页面加素材侧边栏，从本地素材库点一下就把文件送进豆包输入框
+// @version      1.5.0
+// @description  在豆包页面加素材侧边栏，从本地素材库点一下就把文件送进豆包输入框（面板可拖动、预览图可缩放）
 // @author       DSH
 // @match        https://www.doubao.com/*
 // @match        https://doubao.com/*
@@ -286,21 +286,23 @@
     box-shadow:-2px 2px 12px rgba(0,0,0,.28);user-select:none;transition:padding .15s}
   #mja-btn:hover{padding-right:18px}
   #mja-btn.on{background:#2f7fdc}
-  #mja-panel{position:fixed;top:0;right:0;z-index:2147483001;width:520px;min-width:300px;max-width:92vw;
+  #mja-panel{position:fixed;top:0;right:0;z-index:2147483001;width:520px;min-width:300px;max-width:96vw;
     height:100vh;background:#171a20;color:#e6e9ef;border-left:1px solid #2c313c;display:none;
     flex-direction:column;font:13px/1.5 "Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+    --mja-thumb:150px;
     box-shadow:-6px 0 26px rgba(0,0,0,.45)}
   #mja-panel.on{display:flex}
   #mja-grip{position:absolute;left:-3px;top:0;width:7px;height:100%;cursor:col-resize;z-index:5}
   #mja-grip:hover,#mja-grip.drag{background:rgba(75,156,255,.55)}
-  .mja-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid #2c313c;flex:0 0 auto}
-  .mja-head b{font-size:14px}
+  .mja-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:10px 12px;
+    border-bottom:1px solid #2c313c;flex:0 0 auto;cursor:move;user-select:none}
+  .mja-head b{font-size:14px;white-space:nowrap}
   .mja-sp{flex:1}
   .mja-mini{background:#21252e;color:#98a1b0;border:1px solid #2c313c;border-radius:6px;
-    padding:4px 10px;font-size:12px;cursor:pointer}
+    padding:4px 8px;font-size:12px;cursor:pointer;flex:0 0 auto}
   .mja-mini:hover{color:#e6e9ef;border-color:#3a4352}
   .mja-body{flex:1 1 auto;overflow:auto;padding:0}
-  .mja-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;padding:10px}
+  .mja-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--mja-thumb,150px),1fr));gap:9px;padding:10px}
   .mja-cell{position:relative;background:#0f1115;border:1px solid #2c313c;border-radius:8px;
     overflow:hidden;cursor:pointer;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;
     transition:border-color .12s,transform .1s}
@@ -340,6 +342,40 @@
 
   let panel, btn, bodyEl, diagEl;
 
+  /* ---- 界面记忆：位置 / 宽度 / 预览图大小，存本地，重开豆包还在原处 ---- */
+  const UI_KEY = 'mja-ui-v1';
+  const ui = { left: null, top: 0, width: 520, thumb: 150 };
+
+  function loadUI() {
+    try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY) || '{}')); } catch { /* 读坏就用默认 */ }
+    ui.width = Math.min(Math.max(300, +ui.width || 520), Math.round(window.innerWidth * 0.96));
+    ui.thumb = Math.min(Math.max(90, +ui.thumb || 150), 420);
+    ui.top = Math.max(0, +ui.top || 0);
+    ui.left = (ui.left == null) ? null : Math.max(0, +ui.left || 0);
+  }
+
+  function saveUI() {
+    try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* 存不了就算了 */ }
+  }
+
+  /** 把 ui 里的值刷到面板上（位置 / 宽度 / 高度 / 预览图大小），并保证不越出视口 */
+  function applyUI() {
+    if (!panel) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    ui.width = Math.min(Math.max(300, ui.width), Math.round(vw * 0.96));
+    if (ui.left == null) {
+      panel.style.left = 'auto'; panel.style.right = '0';
+    } else {
+      ui.left = Math.min(Math.max(0, ui.left), Math.max(0, vw - 120));
+      panel.style.left = ui.left + 'px'; panel.style.right = 'auto';
+    }
+    ui.top = Math.min(Math.max(0, ui.top), Math.max(0, vh - 120));
+    panel.style.top = ui.top + 'px';
+    panel.style.height = (vh - ui.top) + 'px';     // 始终从 top 延伸到底，不会戳出屏幕
+    panel.style.width = ui.width + 'px';
+    panel.style.setProperty('--mja-thumb', ui.thumb + 'px');
+  }
+
   function build() {
     const st = document.createElement('style');
     st.textContent = CSS;
@@ -358,19 +394,34 @@
       <div class="mja-head">
         <b>📁 漫剧素材</b>
         <span class="mja-sp"></span>
-        <button class="mja-mini" id="mja-refresh">刷新</button>
-        <button class="mja-mini" id="mja-close">×</button>
+        <button class="mja-mini" id="mja-smaller" title="预览图变小">－</button>
+        <button class="mja-mini" id="mja-bigger" title="预览图变大">＋</button>
+        <button class="mja-mini" id="mja-reset" title="复位：回到右上角、默认大小">⌂</button>
+        <button class="mja-mini" id="mja-refresh" title="重新读取素材库">刷新</button>
+        <button class="mja-mini" id="mja-close" title="收起面板">×</button>
       </div>
       <div class="mja-drop" id="mja-drop">把文件拖到这里<br><span style="opacity:.75">松手即送入豆包</span></div>
       <div class="mja-body" id="mja-body"></div>
       <div class="mja-diag" id="mja-diag"></div>
     `;
     document.body.appendChild(panel);
+    loadUI();
+    applyUI();
     bodyEl = panel.querySelector('#mja-body');
     diagEl = panel.querySelector('#mja-diag');
 
     panel.querySelector('#mja-close').onclick = toggle;
     panel.querySelector('#mja-refresh').onclick = () => libInit();
+
+    // 预览图大小：－ / ＋ 每档 30px（90~420），和位置一起记住
+    const stepThumb = (d) => { ui.thumb = Math.min(420, Math.max(90, ui.thumb + d)); applyUI(); saveUI(); };
+    panel.querySelector('#mja-smaller').onclick = () => stepThumb(-30);
+    panel.querySelector('#mja-bigger').onclick = () => stepThumb(30);
+    panel.querySelector('#mja-reset').onclick = () => {
+      ui.left = null; ui.top = 0; ui.width = 520; ui.thumb = 150;
+      applyUI(); saveUI();
+      toast('已复位到右上角默认大小', true);
+    };
 
     const drop = panel.querySelector('#mja-drop');
     ['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => {
@@ -389,24 +440,56 @@
     panel.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
     panel.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); });
 
-    // 左边缘拖拽调宽
+    // 拖动：抓标题栏移动整块面板，抓左边缘调宽度。
+    // 用 Pointer Capture —— 指针划过页面里的 iframe 时事件仍归捕获元素，不会把拖动"甩掉"。
+    // 位置/宽度都记进 ui，重开豆包还在原处。
+    const head = panel.querySelector('.mja-head');
     const grip = panel.querySelector('#mja-grip');
-    let dragging = false;
-    grip.addEventListener('mousedown', (e) => {
-      dragging = true; grip.classList.add('drag');
+    let mode = null, sx = 0, sy = 0, sl = 0, st0 = 0, fixedRight = 0;
+
+    function startDrag(e, kind) {
+      const r = panel.getBoundingClientRect();
+      mode = kind;
+      sx = e.clientX; sy = e.clientY; sl = r.left; st0 = r.top; fixedRight = r.right;
+      if (kind === 'move') {
+        if (ui.left == null) ui.left = r.left;          // 从"贴右"切成"自由位置"
+        head.style.cursor = 'grabbing';
+      } else {
+        grip.classList.add('drag');
+        document.body.style.cursor = 'col-resize';
+      }
+      try { (kind === 'move' ? head : grip).setPointerCapture(e.pointerId); } catch { /* 老浏览器无所谓 */ }
       e.preventDefault(); e.stopPropagation();
-      document.body.style.cursor = 'col-resize';
+    }
+
+    function moveDrag(e) {
+      if (!mode) return;
+      if (mode === 'move') {
+        ui.left = sl + (e.clientX - sx);
+        ui.top = st0 + (e.clientY - sy);
+      } else {
+        ui.width = Math.max(300, Math.min(window.innerWidth * 0.96, fixedRight - e.clientX));
+      }
+      applyUI();
+    }
+
+    function endDrag() {
+      if (!mode) return;
+      if (mode === 'move') head.style.cursor = '';
+      else { grip.classList.remove('drag'); document.body.style.cursor = ''; }
+      mode = null;
+      saveUI();
+    }
+
+    head.addEventListener('pointerdown', (e) => { if (!e.target.closest('button')) startDrag(e, 'move'); });
+    grip.addEventListener('pointerdown', (e) => startDrag(e, 'resize'));
+    [head, grip].forEach((el) => {
+      el.addEventListener('pointermove', moveDrag);
+      el.addEventListener('pointerup', endDrag);
+      el.addEventListener('pointercancel', endDrag);
     });
-    window.addEventListener('mousemove', (e) => {
-      if (!dragging) return;
-      const w = Math.max(300, Math.min(window.innerWidth * 0.94, window.innerWidth - e.clientX));
-      panel.style.width = w + 'px';
-    });
-    window.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      dragging = false; grip.classList.remove('drag');
-      document.body.style.cursor = '';
-    });
+
+    window.addEventListener('resize', () => applyUI());   // 窗口变了别让它跑出屏幕
 
     renderDiag();
   }
