@@ -1835,6 +1835,129 @@ function uploadOne(file) {
   });
 }
 
+/* ===================== 新文件入库卡片 =====================
+ * 收件箱（Edge 下载完 / 手动拷进素材夹）里出现新文件时弹出来：
+ * 先问「进哪个库」，可以顺便改名 —— 后缀固定显示、不参与输入，改名绝不会丢后缀；
+ * 不改名就按原名入库。
+ */
+
+let inboxQueue = [];
+let inboxCurrent = null;
+
+/** 接上后端的 SSE：新文件到达主动推过来，前端不轮询 */
+function connectInbox() {
+  api('/api/inbox').then((r) => { (r.pending || []).forEach(enqueueInbox); }).catch(() => { });
+  try {
+    const es = new EventSource('/api/events');
+    es.addEventListener('inbox', (ev) => {
+      try { enqueueInbox(JSON.parse(ev.data)); } catch { /* 数据坏了就当没收到 */ }
+    });
+    // 断线不用手动重连：EventSource 自己会重试
+  } catch { /* 浏览器不支持就算了 */ }
+}
+
+function enqueueInbox(item) {
+  if (!item || !item.id) return;
+  if (inboxCurrent && inboxCurrent.id === item.id) return;
+  if (inboxQueue.some((x) => x.id === item.id)) return;
+  inboxQueue.push(item);
+  Log.add('📥', `新文件「${item.name}」等待入库`, `${item.rootName || ''}\n  ${item.reason || ''}`);
+  showNextIngest();
+}
+
+/** 一次只弹一张卡片，处理完自动弹下一张 */
+function showNextIngest() {
+  if (inboxCurrent || $('#ingestCard')) return;
+  const item = inboxQueue.shift();
+  if (!item) return;
+  openIngestCard(item);
+}
+
+async function openIngestCard(item) {
+  inboxCurrent = item;
+  let data = { targets: [], lastTarget: null };
+  try { data = await api('/api/inbox/targets'); } catch (e) { toast(e.message, 'err'); }
+  const targets = data.targets || [];
+  if (!targets.length) {
+    toast('还没有添加文件夹，左上角 ＋ 添加后才能入库', 'warn');
+    inboxCurrent = null;
+    await apiPost('/api/inbox/ingest', { id: item.id, action: 'skip' }).catch(() => { });
+    return showNextIngest();
+  }
+
+  const last = data.lastTarget || {};
+  const same = (t) => last.root === t.root && (last.gid || '') === (t.gid || '') && (last.path || '') === (t.path || '');
+  let sel = targets.findIndex((t) => same(t) && (t.kind === 'vgroup' ? !!last.gid : !last.gid));
+  if (sel < 0) sel = 0;
+  const opts = targets.map((t, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${esc(t.label)}</option>`).join('');
+
+  const ext = (item.ext || '').toLowerCase();
+  const isImg = ['.png', '.jpg', '.jpeg', '.jfif', '.gif', '.webp', '.bmp', '.avif'].includes(ext);
+  const isVid = ['.mp4', '.webm', '.mov', '.mkv', '.m4v'].includes(ext);
+  const url = fileUrl(item.root, item.name);
+  const preview = isImg ? `<img src="${url}" alt="">`
+    : isVid ? `<video src="${url}" preload="metadata" muted></video>`
+      : `<div class="ig-noimg">${esc(ext || '文件')}</div>`;
+
+  const card = document.createElement('div');
+  card.id = 'ingestCard';
+  card.className = 'ingest-card';
+  card.innerHTML = `
+    <div class="ig-head">📥 新文件到了 —— 决定它进哪个库</div>
+    <div class="ig-body">
+      <div class="ig-preview">${preview}</div>
+      <div class="ig-fields">
+        <div class="ig-name">
+          <input id="igBase" value="${esc(item.base)}" spellcheck="false" autocomplete="off">
+          <span class="ig-ext" title="后缀固定不变，改名不会丢">${esc(item.ext || '（无后缀）')}</span>
+        </div>
+        <div class="ig-meta">原名 ${esc(item.name)} · ${fmtSize(item.size)} · 来自「${esc(item.rootName || '')}」</div>
+        <label>进入哪里</label>
+        <select id="igTarget">${opts}</select>
+        ${inboxQueue.length ? `<div class="ig-more">还有 ${inboxQueue.length} 个新文件在排队</div>` : ''}
+        <div class="ig-actions">
+          <button class="btn" id="igSkip">跳过（留在原处）</button>
+          <button class="btn" id="igSkipAll">全部跳过</button>
+          <button class="btn primary" id="igOk">入库</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(card);
+
+  const close = () => { card.remove(); inboxCurrent = null; setTimeout(showNextIngest, 220); };
+  const skipOne = (x) => apiPost('/api/inbox/ingest', { id: x.id, action: 'skip' }).catch(() => { });
+
+  $('#igOk').onclick = async () => {
+    const t = targets[Number($('#igTarget').value)] || targets[0];
+    const btn = $('#igOk');
+    btn.disabled = true;
+    try {
+      const r = await apiPost('/api/inbox/ingest', {
+        id: item.id,
+        action: 'ingest',
+        name: $('#igBase').value.trim() || item.base,
+        target: { kind: t.kind, root: t.root, path: t.path, gid: t.gid },
+      });
+      const res = r.result || {};
+      toast(`已入库：${res.path || item.name}`, 'ok');
+      Log.add('📥', `入库「${res.name || item.name}」`, `→ ${t.label}`
+        + (res.name && res.name !== item.name ? `\n  · 已改名：${item.name} → ${res.name}` : ''));
+      close();
+      await refresh();
+    } catch (e) { btn.disabled = false; toast(e.message, 'err'); }
+  };
+  $('#igSkip').onclick = async () => { await skipOne(item); close(); };
+  $('#igSkipAll').onclick = async () => {
+    const rest = inboxQueue.splice(0);
+    for (const x of rest) await skipOne(x);
+    await skipOne(item);
+    toast(`已跳过 ${rest.length + 1} 个新文件（都留在原处）`, 'ok');
+    close();
+  };
+  $('#igBase').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); $('#igOk').click(); } });
+  setTimeout(() => { const i = $('#igBase'); if (i) { i.focus(); i.select(); } }, 60);
+}
+
 /* ===================== 目录选择器（添加文件夹） ===================== */
 
 function openAddRootDialog(startPath) {
@@ -1943,9 +2066,16 @@ function closeModal() {
 
 async function openSettings() {
   const stats = await Thumb.stats();
+  let edge = null;
+  try { edge = await api('/api/edge'); } catch { /* 后端没响应就不显示这块 */ }
+  const edgeDir = (edge && edge.dir) ? edge.dir : '（没读到）';
+  const edgeFrom = !edge ? '没读到后端'
+    : (edge.source === 'edge'
+      ? `同步自 Edge ${edge.profile || 'Default'} 的下载设置 —— 你在 Edge 里改了，这里自动跟着变`
+      : '没读到 Edge，已回退系统「下载」文件夹');
   showModal(`
     <h3>设置</h3>
-    <div class="modal-sub">配置保存在程序目录的 config.json</div>
+    <div class="modal-sub">配置保存在程序目录的 data.db（SQLite）</div>
 
     <label>标题</label>
     <input type="text" id="stTitle" value="${esc(S.cfg.title || '')}">
@@ -1955,14 +2085,29 @@ async function openSettings() {
       显示隐藏文件（以 . 开头的文件）
     </label>
 
-    <label>新下载文件的处理策略</label>
+    <label>收件箱 —— 收哪个目录（不用在这里配）</label>
+    <div class="tpl-preview" style="line-height:1.8">
+      <b>${esc(edgeDir)}</b><br>
+      <span style="color:var(--text-faint)">${esc(edgeFrom)}</span>
+      ${edge && edge.managed ? `<br>✅ 已被「${esc(edge.managed.name)}」管理` : '<br>⚠️ 这个目录还没加为根目录，收件箱看不到它'}
+      ${edge && edge.prompt ? '<br>⚠️ Edge 开着「下载前询问每个文件的保存位置」，你手选的位置我们不知道，建议去 Edge 关掉' : ''}
+    </div>
+    <button class="btn mini" id="stEdgeReload" style="margin-top:6px">重新读取 Edge 设置</button>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-top:14px">
+      <input type="checkbox" id="stInbox" style="width:auto" ${!edge || edge.enabled ? 'checked' : ''}>
+      监听根目录里的新文件（关掉就完全不打扰）
+    </label>
+
+    <label>新文件的处理策略</label>
     <select id="stPolicy">
       <option value="smart" ${S.cfg.autoPolicy === 'smart' ? 'selected' : ''}>智能：文件名无意义时弹窗询问</option>
       <option value="always" ${S.cfg.autoPolicy === 'always' ? 'selected' : ''}>总是询问</option>
       <option value="never" ${S.cfg.autoPolicy === 'never' ? 'selected' : ''}>全自动：直接入库不打扰</option>
     </select>
     <div style="font-size:11.5px;color:var(--text-faint);margin-top:6px">
-      （P1 阶段接入收件箱监听后生效）
+      弹窗会先问「进哪个库」，可以顺便改名（后缀固定，改不丢）；不改名就按原名入库。<br>
+      「全自动」和「智能判定为名字有意义」用的落点是<b>上次入库的位置</b>${edge && edge.lastTarget ? `（现在指向：${esc(edge.lastTarget.path || '根目录')}）` : '（还没用过，会留在原处）'}。
     </div>
 
     <label>项目模板（每行一个，新建项目时自动创建）</label>
@@ -1978,6 +2123,7 @@ async function openSettings() {
       <button class="btn primary" id="stSave">保存</button>
     </div>
   `);
+  $('#stEdgeReload').onclick = () => openSettings();
   $('#stClearThumb').onclick = async () => {
     await Thumb.clear();
     toast('缩略图缓存已清空', 'ok');
@@ -1989,6 +2135,7 @@ async function openSettings() {
         title: $('#stTitle').value.trim() || '漫剧素材管理',
         showHidden: $('#stHidden').checked,
         autoPolicy: $('#stPolicy').value,
+        inboxEnabled: $('#stInbox').checked,
         projectTemplate: $('#stTpl').value.split('\n').map((s) => s.trim()).filter(Boolean),
       });
       await reloadConfig();
@@ -2786,6 +2933,7 @@ async function init() {
     showEmpty('还没有添加文件夹', '点左上角的 ＋ 选择要管理的文件夹（可以是任意磁盘位置）', '添加文件夹', openAddRootDialog);
     setStatus('就绪');
   }
+  connectInbox();     // 收件箱：新文件到达时弹「入库卡片」
 }
 
 init();
