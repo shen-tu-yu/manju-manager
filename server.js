@@ -70,6 +70,8 @@ const DEFAULT_CONFIG = {
   title: '漫剧素材管理',
   roots: [],                 // [{ id, name, path }]
   autoPolicy: 'smart',       // smart | always | never
+  inboxEnabled: true,        // 是否监听已挂载根目录里的"新文件到达"
+  lastIngestTarget: null,    // 「全自动入库」的落点，记住上次选的 { root, path, gid }
   showHidden: false,
   projectTemplate: ['01_场景', '02_人物', '03_分镜', '04_视频片段', '05_成片'],
   smartRules: [
@@ -102,7 +104,8 @@ function loadConfig() {
 function saveConfig() {
   try {
     const s = {};
-    for (const k of ['port', 'host', 'title', 'autoPolicy', 'showHidden', 'projectTemplate', 'smartRules', 'limits']) {
+    for (const k of ['port', 'host', 'title', 'autoPolicy', 'inboxEnabled', 'lastIngestTarget',
+      'showHidden', 'projectTemplate', 'smartRules', 'limits']) {
       s[k] = config[k];
     }
     DB.setSettings(s);
@@ -597,6 +600,317 @@ async function expandItems(b) {
   return out;
 }
 
+// ---------------------------------------------------------------- 收件箱：Edge 同步 + 新文件监听
+//
+// 干的事：Edge 下载完（或任何手动拷进素材夹）的文件一落到根目录顶层，就弹「入库卡片」
+// 问「进哪个库 + 要不要改名」，而不是等用户自己去翻目录。
+//
+// 三条硬规矩：
+//   ① 收件箱目录不在网页里单独配 —— 直接同步 Edge 的 download.default_directory，
+//      改 Edge 就生效，避免"改一次要改两处"
+//   ② 只认「根目录顶层的新增文件」，且必须等大小稳定（同名 .crdownload 消失）才算下载完成
+//   ③ 网页自己产生的文件（上传/改名/移动/恢复）必须登记忽略，否则自己弹自己
+
+const INBOX_TICK = 1500;              // 目录事件去抖：等一会儿再扫，避免下一个文件来三次事件扫三遍
+const INBOX_IGNORE_MS = 60 * 1000;    // 自产文件的忽略时间窗
+
+const inboxPending = new Map();       // id -> item（等用户决定进哪个库）
+const inboxClients = new Set();       // SSE 连接
+const inboxIgnored = new Map();       // 绝对路径(小写) -> 忽略截止时间
+const inboxKnown = new Map();         // rootId -> Set<文件名>（上一轮扫描的快照）
+const inboxWatchers = new Map();      // rootId -> { watcher, timer }
+
+const inboxSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function edgeUserDataDir() {
+  const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  return path.join(local, 'Microsoft', 'Edge', 'User Data');
+}
+
+/**
+ * 同步 Edge 的下载设置。
+ * 读各 profile 的 Preferences → download.default_directory / prompt_for_download；
+ * 读到用 Edge 的，读不到回退系统「下载」文件夹。
+ */
+async function readEdgePrefs() {
+  const out = { available: false, source: 'system', profile: '', dir: '', prompt: false, profiles: [], error: '' };
+  const base = edgeUserDataDir();
+  let names = [];
+  try {
+    names = (await fsp.readdir(base, { withFileTypes: true }))
+      .filter((d) => d.isDirectory() && (d.name === 'Default' || /^Profile \d+$/.test(d.name)))
+      .map((d) => d.name);
+  } catch {
+    out.error = '读不到 Edge 用户数据目录';
+  }
+  // Default 排最前，优先用它
+  names.sort((a, b) => (a === 'Default' ? -1 : b === 'Default' ? 1 : a.localeCompare(b)));
+  for (const name of names) {
+    try {
+      const raw = await fsp.readFile(path.join(base, name, 'Preferences'), 'utf8');
+      const j = JSON.parse(raw);
+      const dl = j.download || {};
+      out.profiles.push({
+        profile: name,
+        dir: dl.default_directory || (j.savefile && j.savefile.default_directory) || '',
+        prompt: dl.prompt_for_download === true,
+      });
+    } catch { /* 这个 profile 读不了就跳 */ }
+  }
+  const pick = out.profiles.find((x) => x.dir) || out.profiles[0];
+  if (pick && pick.dir) {
+    out.available = true; out.source = 'edge';
+    out.profile = pick.profile; out.dir = pick.dir; out.prompt = pick.prompt;
+  } else {
+    out.dir = path.join(os.homedir(), 'Downloads');
+    if (!out.error) out.error = 'Edge 里没读到下载目录，已回退系统下载文件夹';
+  }
+  return out;
+}
+
+/** 网页自己写入的文件：登记忽略，否则监听器会把自己的操作当成"新下载" */
+function markSelfWrite(absPath) {
+  if (!absPath) return;
+  const abs = path.resolve(absPath);
+  inboxIgnored.set(abs.toLowerCase(), Date.now() + INBOX_IGNORE_MS);
+  for (const r of config.roots) {
+    if (path.dirname(abs).toLowerCase() === r.path.toLowerCase()) {
+      const known = inboxKnown.get(r.id);
+      if (known) known.add(path.basename(abs));    // 双保险：直接写进快照
+    }
+  }
+}
+
+function isSelfWrite(absPath) {
+  const key = path.resolve(absPath).toLowerCase();
+  const until = inboxIgnored.get(key);
+  if (!until) return false;
+  if (until < Date.now()) { inboxIgnored.delete(key); return false; }
+  return true;
+}
+
+async function snapshotTop(root) {
+  const set = new Set();
+  try {
+    const ds = await fsp.readdir(root.path, { withFileTypes: true });
+    for (const d of ds) if (d.isFile() && !d.name.startsWith('.')) set.add(d.name);
+  } catch { /* 读不到就当空目录 */ }
+  return set;
+}
+
+function sseSend(event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of inboxClients) {
+    try { res.write(payload); } catch { inboxClients.delete(res); }
+  }
+}
+
+/** 等文件写完：同级还有 .crdownload、或大小还在变，都不算下载完成 */
+async function waitFileReady(abs) {
+  const crd = abs + '.crdownload';
+  for (let i = 0; i < 24; i++) {
+    const a = await fsp.stat(abs).catch(() => null);
+    if (!a || !a.isFile()) return null;
+    await inboxSleep(700);
+    const b = await fsp.stat(abs).catch(() => null);
+    if (!b || !b.isFile()) return null;
+    if (b.size === a.size && b.size > 0 && !fs.existsSync(crd)) return b;
+  }
+  return null;   // 一直没稳定（比如大文件还在下），这轮放弃
+}
+
+/** 文件名"有没有意义"：命中设置里的 smartRules 正则就算没意义 */
+function matchSmartRule(name) {
+  const base = path.basename(name, path.extname(name));
+  for (const r of (Array.isArray(config.smartRules) ? config.smartRules : [])) {
+    try { if (new RegExp(r.pattern).test(base)) return r.name || '规则命中'; } catch { /* 正则写错就跳过 */ }
+  }
+  return '';
+}
+
+function queueInboxItem(root, name, st, extra) {
+  const ext = path.extname(name);
+  const item = Object.assign({
+    id: 'nx' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    root: root.id, rootName: root.name, rootPath: root.path,
+    name, base: path.basename(name, ext), ext,
+    size: st.size, mtime: st.mtimeMs, at: Date.now(),
+  }, extra || {});
+  inboxPending.set(item.id, item);
+  LOG(`[收件箱] 新文件 ${name} -> 待用户选择（${item.reason}）`);
+  sseSend('inbox', item);
+  return item;
+}
+
+/**
+ * 入库：把 srcRoot 顶层的 name 放到目标位置，可选改名，可选加进虚拟分类。
+ * target = { root, path, gid, kind }，kind: dir | vgroup | root
+ * newBase 只给「主名」，后缀强制沿用原后缀 —— 用户改不出没后缀的文件。
+ */
+async function ingestFile(srcRoot, name, target, newBase) {
+  const srcAbs = path.join(srcRoot.path, name);
+  const tRoot = (target && target.root) ? getRoot(target.root) : srcRoot;
+  const kind = (target && target.kind) || 'root';
+  const destDirAbs = kind === 'vgroup' ? tRoot.path : resolveSafe(tRoot.path, (target && target.path) || '');
+  const dst = await fsp.stat(destDirAbs).catch(() => null);
+  if (!dst || !dst.isDirectory()) throw new HttpError(404, '目标文件夹不存在：' + destDirAbs);
+
+  const ext = path.extname(name);
+  let finalName = name;
+  if (newBase != null && String(newBase).trim() !== '' && String(newBase).trim() + ext !== name) {
+    finalName = assertValidName(String(newBase).trim() + ext);
+  }
+
+  const srcDirAbs = path.dirname(srcAbs);
+  let destAbs = path.join(destDirAbs, finalName);
+  const sameName = destAbs.toLowerCase() === srcAbs.toLowerCase();
+
+  if (!sameName) {
+    if (fs.existsSync(destAbs)) destAbs = path.join(destDirAbs, uniqueName(destDirAbs, finalName));
+    try {
+      await fsp.rename(srcAbs, destAbs);
+    } catch (e) {
+      if (e.code === 'EXDEV') {                      // 跨盘：先复制再删
+        await fsp.cp(srcAbs, destAbs, { recursive: false });
+        await fsp.rm(srcAbs, { force: true });
+      } else throw e;
+    }
+  }
+  markSelfWrite(destAbs);
+
+  const finalBase = path.basename(destAbs);
+  if (kind === 'vgroup' && target.gid) {
+    const g = groupsOf(tRoot).find((x) => x.id === target.gid);
+    if (g) {
+      const set = new Set(Array.isArray(g.files) ? g.files : []);
+      set.add(finalBase);
+      g.files = Array.from(set);
+      saveVGroupsFile();
+    }
+  }
+
+  // 记住落点：下次「全自动」直接往这儿放
+  config.lastIngestTarget = {
+    root: tRoot.id,
+    path: toRel(tRoot.path, destDirAbs),
+    gid: kind === 'vgroup' ? String(target.gid || '') : '',
+  };
+  saveConfig();
+
+  return { name: finalBase, root: tRoot.id, path: toRel(tRoot.path, destAbs), from: toRel(srcRoot.path, srcAbs), kind };
+}
+
+/** 「全自动：直接入库不打扰」/ smart 判定为"名字有意义"时走这里 */
+async function autoIngestQuiet(root, name) {
+  const t = config.lastIngestTarget;
+  if (!t || !t.root) return null;                    // 还没选过落点：就留在原地，等用户自己归类
+  try {
+    return await ingestFile(root, name, { root: t.root, path: t.path || '', gid: t.gid || '', kind: t.gid ? 'vgroup' : 'root' }, null);
+  } catch (e) {
+    LOG(`[收件箱] 自动入库失败 ${name}: ${e.message}`);
+    return null;
+  }
+}
+
+/** 扫一个根目录的顶层，找出"新增的文件"并按策略分派 */
+async function scanRoot(root) {
+  const known = inboxKnown.get(root.id) || new Set();
+  const now = await snapshotTop(root);
+  const added = [];
+  for (const n of now) if (!known.has(n)) added.push(n);
+  inboxKnown.set(root.id, now);
+  if (!added.length) return;
+
+  const t = Date.now();
+  for (const [k, v] of inboxIgnored) if (v < t) inboxIgnored.delete(k);
+
+  for (const name of added) {
+    const abs = path.join(root.path, name);
+    if (isSelfWrite(abs)) continue;
+    const st = await waitFileReady(abs);
+    if (!st) {
+      // 还没写完：从快照里撤回，过几秒再看一次
+      const set = inboxKnown.get(root.id);
+      if (set) set.delete(name);
+      setTimeout(() => { scanRoot(root).catch(() => { }); }, 4000);
+      continue;
+    }
+    const rule = matchSmartRule(name);
+    const policy = config.autoPolicy;
+    if (policy === 'never' || (policy === 'smart' && !rule)) {
+      const r = await autoIngestQuiet(root, name);
+      LOG(`[收件箱] 静默入库 ${name}${r ? ' -> ' + r.path : '（未设置落点，留在原处）'}`);
+      sseSend('inbox-done', { name, to: r ? r.path : '', action: 'auto' });
+      continue;
+    }
+    queueInboxItem(root, name, st, { reason: policy === 'smart' ? `文件名无意义（${rule}）` : '总是询问' });
+  }
+}
+
+function stopInbox() {
+  for (const [, w] of inboxWatchers) {
+    try { w.watcher.close(); } catch { /* 已关就算了 */ }
+    if (w.timer) clearTimeout(w.timer);
+  }
+  inboxWatchers.clear();
+}
+
+/** （重新）挂上所有根目录的监听。roots 变了、开关变了都要重来一遍 */
+async function startInbox() {
+  stopInbox();
+  if (config.inboxEnabled === false) { LOG('[收件箱] 已关闭监听'); return; }
+  let ok = 0;
+  for (const root of config.roots) {
+    if (!fs.existsSync(root.path)) continue;
+    inboxKnown.set(root.id, await snapshotTop(root));   // 先立快照：已有的文件不算"新到的"
+    try {
+      const watcher = fs.watch(root.path, { persistent: true }, () => {
+        const w = inboxWatchers.get(root.id);
+        if (!w) return;
+        if (w.timer) clearTimeout(w.timer);
+        w.timer = setTimeout(() => { scanRoot(root).catch((e) => LOG('[收件箱] 扫描失败: ' + e.message)); }, INBOX_TICK);
+      });
+      watcher.on('error', () => { /* 目录被删/拔盘：忽略，下次启动重来 */ });
+      inboxWatchers.set(root.id, { watcher, timer: null });
+      ok++;
+    } catch (e) {
+      LOG(`[收件箱] 无法监听 ${root.path}: ${e.message}`);
+    }
+  }
+  const edge = await readEdgePrefs();
+  LOG(`[收件箱] 监听 ${ok}/${config.roots.length} 个根目录 · Edge 下载目录：${edge.dir}${edge.prompt ? '（Edge 开着"下载前询问保存位置"）' : ''}`);
+}
+
+/** 可选入库位置：每个根的文件夹（限深）+ 虚拟分类 + 根目录本身（散-未归类） */
+async function listIngestTargets() {
+  const out = [];
+  for (const root of config.roots) {
+    out.push({
+      kind: 'root', root: root.id, path: '', gid: '',
+      label: `📦 ${root.name} — 根目录（散-未归类）`,
+    });
+    let count = 0;
+    const queue = [{ abs: root.path, rel: '', d: 0 }];
+    while (queue.length && count < 400) {
+      const cur = queue.shift();
+      if (cur.d >= 3) continue;
+      let ds = [];
+      try { ds = await fsp.readdir(cur.abs, { withFileTypes: true }); } catch { continue; }
+      for (const d of ds) {
+        if (!d.isDirectory() || d.name.startsWith('.') || d.name === RECYCLE_NAME) continue;
+        const rel = cur.rel ? cur.rel + '/' + d.name : d.name;
+        out.push({ kind: 'dir', root: root.id, path: rel, gid: '', label: `📁 ${root.name} › ${rel}` });
+        if (++count >= 400) break;
+        queue.push({ abs: path.join(cur.abs, d.name), rel, d: cur.d + 1 });
+      }
+    }
+    for (const g of groupsOf(root)) {
+      out.push({ kind: 'vgroup', root: root.id, path: '', gid: g.id, label: `🗂 ${g.name}（虚拟分类）` });
+    }
+  }
+  return { targets: out, lastTarget: config.lastIngestTarget || null };
+}
+
 // ---------------------------------------------------------------- 路由
 
 const server = http.createServer(async (req, res) => {
@@ -610,8 +924,8 @@ const server = http.createServer(async (req, res) => {
   const p = parsed.pathname;
   const q = parsed.searchParams;
 
-  // 排查用：记下每一个写操作请求（/api/file 是图片流，太频繁，跳过）
-  if (p.startsWith('/api/') && p !== '/api/file') LOG(`${req.method} ${p}`);
+  // 排查用：记下每一个写操作请求（/api/file 是图片流、/api/events 是长连接，太频繁，跳过）
+  if (p.startsWith('/api/') && p !== '/api/file' && p !== '/api/events') LOG(`${req.method} ${p}`);
 
   // 只允许豆包域名跨域读这个本地服务（给浏览器扩展用）。
   // 用白名单而不是 *，否则任何网页都能读你硬盘上的东西。
@@ -639,6 +953,8 @@ const server = http.createServer(async (req, res) => {
         title: config.title,
         roots: config.roots.map((r) => ({ id: r.id, name: r.name, path: r.path, exists: fs.existsSync(r.path) })),
         autoPolicy: config.autoPolicy,
+        inboxEnabled: config.inboxEnabled !== false,
+        lastIngestTarget: config.lastIngestTarget || null,
         showHidden: config.showHidden,
         projectTemplate: config.projectTemplate,
         smartRules: config.smartRules,
@@ -649,12 +965,86 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/config' && req.method === 'POST') {
       const b = await body();
+      const oldInbox = config.inboxEnabled !== false;
       if (typeof b.title === 'string') config.title = b.title;
       if (typeof b.autoPolicy === 'string') config.autoPolicy = b.autoPolicy;
+      if (typeof b.inboxEnabled === 'boolean') config.inboxEnabled = b.inboxEnabled;
       if (typeof b.showHidden === 'boolean') config.showHidden = b.showHidden;
       if (Array.isArray(b.projectTemplate)) config.projectTemplate = b.projectTemplate.map(String);
       saveConfig();
+      if (oldInbox !== (config.inboxEnabled !== false)) startInbox().catch(() => { });
       return sendJSON(res, 200, { ok: true, config });
+    }
+
+    // ============================ 收件箱（新文件到达） ============================
+
+    // 同步到的 Edge 下载设置 —— 网页里只读展示，配置源始终是 Edge 自己
+    if (p === '/api/edge' && req.method === 'GET') {
+      const edge = await readEdgePrefs();
+      const abs = path.resolve(edge.dir).toLowerCase();
+      const managed = config.roots.find((r) => {
+        const a = r.path.toLowerCase();
+        return a === abs || abs.startsWith(a + path.sep);
+      });
+      return sendJSON(res, 200, Object.assign(edge, {
+        managed: managed ? { id: managed.id, name: managed.name, path: managed.path } : null,
+        policy: config.autoPolicy,
+        enabled: config.inboxEnabled !== false,
+        lastTarget: config.lastIngestTarget || null,
+        pending: inboxPending.size,
+      }));
+    }
+
+    // SSE：新文件到达时主动推给页面，不用前端轮询
+    if (p === '/api/events' && req.method === 'GET') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+      });
+      res.write('retry: 3000\n\n');
+      inboxClients.add(res);
+      const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { /* 断线了 */ } }, 25000);
+      req.on('close', () => { clearInterval(ping); inboxClients.delete(res); });
+      return;
+    }
+
+    // 还没处理的新文件（页面刷新 / 服务重启后的兜底）
+    if (p === '/api/inbox' && req.method === 'GET') {
+      return sendJSON(res, 200, {
+        pending: Array.from(inboxPending.values()),
+        enabled: config.inboxEnabled !== false,
+        policy: config.autoPolicy,
+        lastTarget: config.lastIngestTarget || null,
+      });
+    }
+
+    if (p === '/api/inbox/targets' && req.method === 'GET') {
+      return sendJSON(res, 200, await listIngestTargets());
+    }
+
+    // 入库 / 跳过
+    if (p === '/api/inbox/ingest' && req.method === 'POST') {
+      const b = await body();
+      const item = inboxPending.get(String(b.id || ''));
+      if (!item) throw new HttpError(404, '这条新文件记录已经处理过了');
+      const srcRoot = getRoot(item.root);
+      let result = null;
+      if (b.action === 'skip') {
+        LOG(`[收件箱] 跳过 ${item.name}（留在原处）`);
+      } else {
+        const t = b.target || {};
+        result = await ingestFile(srcRoot, item.name, {
+          root: t.root || item.root,
+          path: t.path || '',
+          gid: t.gid || '',
+          kind: t.kind || 'root',
+        }, b.name);
+        LOG(`[收件箱] 入库 ${item.name} -> ${result.path}${result.name !== item.name ? `（已改名 ${result.name}）` : ''}`);
+      }
+      inboxPending.delete(item.id);
+      sseSend('inbox-done', { id: item.id, name: item.name, to: result ? result.path : '', action: b.action === 'skip' ? 'skip' : 'ingest' });
+      return sendJSON(res, 200, { ok: true, result });
     }
 
     if (p === '/api/roots' && req.method === 'POST') {
@@ -669,6 +1059,7 @@ const server = http.createServer(async (req, res) => {
       const root = { id: `r${++rootSeq}_${Date.now().toString(36)}`, name: String(b.name || path.basename(abs) || abs), path: abs };
       config.roots.push(root);
       saveConfig();
+      startInbox().catch(() => { });      // 新挂的文件夹也要被监听
       return sendJSON(res, 200, { ok: true, root });
     }
 
@@ -678,6 +1069,7 @@ const server = http.createServer(async (req, res) => {
       if (i < 0) throw new HttpError(404, '根目录不存在');
       config.roots.splice(i, 1);
       saveConfig();
+      startInbox().catch(() => { });      // 摘掉的文件夹别再监听
       return sendJSON(res, 200, { ok: true });
     }
 
@@ -784,6 +1176,7 @@ const server = http.createServer(async (req, res) => {
       const root = getRoot(b.root);
       const abs = resolveSafe(root.path, b.path || '');
       await fsp.writeFile(abs, String(b.content == null ? '' : b.content), 'utf8');
+      markSelfWrite(abs);
       return sendJSON(res, 200, { ok: true });
     }
 
@@ -805,6 +1198,7 @@ const server = http.createServer(async (req, res) => {
         req.pipe(ws);
       });
       const st2 = await fsp.stat(target);
+      markSelfWrite(target);          // 自己传的，别让收件箱再弹一次
       return sendJSON(res, 200, { ok: true, name: path.basename(target), size: st2.size });
     }
 
@@ -848,6 +1242,7 @@ const server = http.createServer(async (req, res) => {
       const target = path.join(path.dirname(abs), name);
       if (target.toLowerCase() !== abs.toLowerCase() && fs.existsSync(target)) throw new HttpError(409, '同名文件已存在');
       await fsp.rename(abs, target);
+      markSelfWrite(target);
       return sendJSON(res, 200, { ok: true, path: toRel(root.path, target), name });
     }
 
@@ -878,6 +1273,7 @@ const server = http.createServer(async (req, res) => {
         if (target === abs) { results.push({ from: items[i], to: toRel(root.path, abs), ok: true, skipped: true }); continue; }
         if (fs.existsSync(target)) { results.push({ from: items[i], ok: false, error: '目标已存在：' + newName }); continue; }
         await fsp.rename(abs, target);
+        markSelfWrite(target);
         results.push({ from: items[i], to: toRel(root.path, target), ok: true });
       }
       return sendJSON(res, 200, { ok: true, results });
@@ -909,6 +1305,7 @@ const server = http.createServer(async (req, res) => {
           const dest = path.join(targetDirAbs, name);
           if (isMove) await fsp.rename(srcAbs, dest);
           else await fsp.cp(srcAbs, dest, { recursive: true });
+          markSelfWrite(dest);
           results.push({ from: it.path, to: toRel(targetRoot.path, dest), ok: true });
         } catch (e) {
           results.push({ from: it.path, ok: false, error: e.message });
@@ -974,6 +1371,7 @@ const server = http.createServer(async (req, res) => {
           const destName = uniqueName(destDir, rec.name);
           await fsp.rename(srcAbs, path.join(destDir, destName));
           await fsp.rm(bucket, { recursive: true, force: true });
+          markSelfWrite(path.join(destDir, destName));
           results.push({ id, ok: true, path: toRel(root.path, path.join(destDir, destName)) });
         } catch (e) { results.push({ id, ok: false, error: e.message }); }
       }
@@ -1320,6 +1718,8 @@ server.listen(config.port, config.host, () => {
   console.log('   按 Ctrl+C 停止服务');
   console.log('');
   if (process.argv.includes('--open')) openBrowser(url);
+  // 收件箱：给所有已挂载根目录挂上"新文件到达"监听（Edge 下载完就弹入库卡片）
+  startInbox().catch((e) => console.error('[收件箱] 启动监听失败:', e.message));
 });
 
 function addRoot(p, name, quiet) {

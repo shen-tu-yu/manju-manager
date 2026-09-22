@@ -672,3 +672,44 @@ body.dragging { cursor: grabbing; }
 }
 .up-bar .up-track { height: 4px; background: #0f1115; border-radius: 3px; margin-top: 8px; overflow: hidden; }
 .up-bar .up-fill { height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+
+/* ===================== 新文件入库卡片 ===================== */
+.ingest-card {
+  position: fixed; right: 20px; bottom: 20px; z-index: 1100;
+  width: 470px; max-width: calc(100vw - 40px);
+  background: var(--panel-2); border: 1px solid var(--accent);
+  border-radius: 12px; box-shadow: 0 10px 34px rgba(0, 0, 0, .5);
+  overflow: hidden; animation: ig-in .18s ease-out;
+}
+@keyframes ig-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.ingest-card .ig-head {
+  padding: 10px 14px; background: var(--accent-soft);
+  border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600;
+}
+.ingest-card .ig-body { display: flex; gap: 12px; padding: 12px 14px; }
+.ingest-card .ig-preview {
+  width: 150px; height: 120px; flex: none; border-radius: 8px; overflow: hidden;
+  background: #0f1115; display: flex; align-items: center; justify-content: center;
+}
+.ingest-card .ig-preview img,
+.ingest-card .ig-preview video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.ingest-card .ig-noimg { color: var(--text-faint); font-size: 12px; }
+.ingest-card .ig-fields { flex: 1; min-width: 0; }
+.ingest-card .ig-name { display: flex; align-items: stretch; gap: 0; }
+.ingest-card .ig-name input {
+  flex: 1; min-width: 0; padding: 6px 9px; font-size: 13px; color: var(--text);
+  background: #0f1115; border: 1px solid var(--border);
+  border-radius: 7px 0 0 7px; border-right: none;
+}
+.ingest-card .ig-ext {
+  padding: 6px 9px; font-size: 12.5px; color: #9fb0c8; background: #232b38;
+  border: 1px solid var(--border); border-radius: 0 7px 7px 0; white-space: nowrap;
+}
+.ingest-card .ig-meta {
+  margin: 6px 0 10px; font-size: 11.5px; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ingest-card .ig-more { margin-top: 6px; font-size: 11.5px; color: var(--text-faint); }
+.ingest-card .ig-actions { display: flex; gap: 8px; margin-top: 12px; }
+.ingest-card .ig-actions .btn { padding: 6px 12px; font-size: 12px; }
+.ingest-card .ig-actions #igOk { margin-left: auto; }
