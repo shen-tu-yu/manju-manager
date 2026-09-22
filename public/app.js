@@ -2394,6 +2394,17 @@ function clearDropTargets() {
   $$('.drop-target').forEach((el) => el.classList.remove('drop-target'));
 }
 
+/**
+ * 是否是从系统（资源管理器）拖进来的文件。
+ * 只看 dataTransfer.types 里的 'Files'：它同时覆盖外部文件拖入和「在桌面/Finder 里拖文件」，
+ * 而网页内部拖拽（S.dragPaths）虽然也带 Files 类型，调用处一律先排除 S.dragPaths。
+ */
+function isFileDrag(ev) {
+  const dt = ev.dataTransfer;
+  if (!dt) return false;
+  return Array.from(dt.types || []).includes('Files');
+}
+
 /* ===================== 事件绑定 ===================== */
 
 /**
@@ -2638,7 +2649,7 @@ function bindDragDropEvents() {
   // 拖拽：外部文件上传
   let dragDepth = 0;
   window.addEventListener('dragenter', (ev) => {
-    if (ev.dataTransfer && Array.from(ev.dataTransfer.types || []).includes('Files') && !S.dragPaths) {
+    if (isFileDrag(ev) && !S.dragPaths) {
       dragDepth++;
       $('#dropMask').classList.remove('hidden');
     }
@@ -2647,9 +2658,18 @@ function bindDragDropEvents() {
     if (--dragDepth <= 0) { dragDepth = 0; $('#dropMask').classList.add('hidden'); }
   });
   window.addEventListener('dragover', (ev) => {
-    if (S.dragPaths) { ev.preventDefault(); moveDragGhost(ev.clientX, ev.clientY); }
+    // 内部拖拽（移动素材）
+    if (S.dragPaths) { ev.preventDefault(); moveDragGhost(ev.clientX, ev.clientY); return; }
+    // 外部文件拖入：必须显式取消默认行为，否则浏览器认为页面不是放置目标，
+    // 松手时直接用新标签页打开这个文件（页面被“截胡”，上传永远收不到）。
+    if (isFileDrag(ev)) {
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+    }
   });
   window.addEventListener('drop', (ev) => {
+    // 只要 drop 落在页面里，就无条件阻止浏览器默认动作（打开文件 / 导航）
+    ev.preventDefault();
     dragDepth = 0;
     $('#dropMask').classList.add('hidden');
     if (S.dragPaths) {
@@ -2661,7 +2681,6 @@ function bindDragDropEvents() {
       return;
     }
     if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) {
-      ev.preventDefault();
       uploadFiles(Array.from(ev.dataTransfer.files));
     }
   });
