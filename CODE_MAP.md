@@ -1,288 +1,239 @@
 # 代码地图 CODE_MAP
 
-> **给未来的自己看的定位手册。** 出问题时先查这里，别再从三千行里翻。
-> 行号 = 2026-09-22 实测快照（`grep -n` 核对过），代码改动后**必须刷新行号**。
-> 2026-09-22 新增**收件箱模块**（`server.js` 1337 → 1812 行），
-> `server.js` 大约 `600` 行之后的行号整体位移，旧行号作废。
-> ⚠️ **别用 `Get-Content` 数行数**（PS 5.1 会少数几十行），用 `node -e "...split('\n').length"`。
+> **定位手册：出问题先查这里，别从三千行里翻。**
+>
+> 这份文件**故意不含行号** —— 行号每次改代码就整体漂移，手工维护它纯属自虐。
+> 职责、规则、踩坑、排查写在这里；**精确行号全部自动生成**：
+>
+> ```powershell
+> node map.js            # 改完代码跑一下，刷新 CODE_MAP.index.md
+> node map.js 收件箱      # 最常用：按关键词直接查行号
+> node map.js --print    # 只看不落盘
+> ```
+>
+> 生成物是 [`CODE_MAP.index.md`](CODE_MAP.index.md)（别手改）。
+> ⚠️ 别用 `Get-Content` 数行数（PS 5.1 会少数几十行），`map.js` 用的是 Node。
 
 ---
 
-## 一、文件职责
+## 一、文件职责与依赖
 
-| 文件 | 行数 | 唯一职责 | **不该出现** |
-|---|---|---|---|
-| `server.js` | 1812 | HTTP 服务、路由分发、文件系统 IO、外部命令、收件箱监听 | 业务规则、界面文案 |
-| `db.js` | 152 | SQLite 存取（Node 内置 `node:sqlite`） | HTTP 概念、路径安全 |
-| `public/app.js` | 3028 | 界面逻辑 | 直接拼 API URL（**待改，41 处**） |
-| `public/index.html` | 147 | DOM 骨架 | 逻辑 |
-| `public/style.css` | 725 | 样式 | — |
-| `public/tools/` | — | 投放素材助手：油猴脚本 + 安装页 + 探针页 | — |
-| `extension/` | — | 同一功能的 Edge 扩展版 | — |
+| 文件 | 唯一职责 | **不该出现** |
+|---|---|---|
+| `server.js` | HTTP 服务、路由分发、文件系统 IO、外部命令、收件箱监听 | 业务规则、界面文案 |
+| `db.js` | SQLite 存取（Node 内置 `node:sqlite`，零依赖） | HTTP 概念、路径安全 |
+| `public/app.js` | 界面逻辑 | 直接拼 API URL（**待改，41 处**） |
+| `public/index.html` | DOM 骨架 | 逻辑 |
+| `public/style.css` | 样式 | — |
+| `public/tools/` | 投放素材助手：油猴脚本 + 安装页 + 探针页 | — |
+| `extension/` | 同一功能的 Edge 扩展版 | — |
+| `map.js` | 生成行号索引（见头部说明） | — |
 
 **依赖方向**：`界面 → HTTP API → db.js → data.db`，**单向**。
 
 ---
 
-## 二、后端 API（38 个分支，全在 `server.js:982` 那个函数里）
+## 二、后端（`server.js`）
 
-| 路由 | 行 | 路由 | 行 |
-|---|---|---|---|
-| `GET /api/config` | 1017 | `POST /api/delete` | 1392 |
-| `POST /api/config` | 1033 | `GET /api/trash` | 1412 |
-| **`GET /api/edge`** | **1049** | `POST /api/trash/restore` | 1431 |
-| **`GET /api/events`**（SSE） | **1066** | `POST /api/trash/purge` | 1457 |
-| **`GET /api/inbox`** | **1080** | `GET /api/search` | 1472 |
-| **`GET /api/inbox/targets`** | **1089** | `GET /api/vgroups` | 1515 |
-| **`POST /api/inbox/ingest`** | **1094** | `POST /api/vgroups` | 1520 |
-| `POST /api/roots` | 1117 | `POST /api/vgroups/update` | 1539 |
-| `DELETE /api/roots/:id` | 1133 | `POST /api/vgroups/assign` | 1551 |
-| `GET /api/fs/drives` | 1144 | `POST /api/vgroups/delete` | 1569 |
-| `GET /api/fs/dirs` | 1148 | **`POST /api/vgroups/materialize`** | **1583** |
-| **`GET /api/list`** | **1167** | `GET /api/duplicates` | 1640 |
-| `GET /api/tree` | 1199 | **`POST /api/clipboard`** | **1659** |
-| `GET /api/file` | 1221 | `POST /api/reveal` | 1704 |
-| `GET /api/text` | 1227 | `GET /api/sysinfo` | 1722 |
-| `POST /api/text` | 1241 | | |
-| `PUT /api/upload` | 1251 | | |
-| `POST /api/mkdir` | 1280 | | |
-| `POST /api/mkdir-template` | 1292 | | |
-| `POST /api/rename` | 1309 | | |
-| `POST /api/rename-batch` | 1324 | | |
-| `POST /api/move` `/api/copy` | 1357 | | |
+### 2.1 路由
 
-### 后端内部函数（改一个影响一片，必须全量回归）
+**37 个分支全在 `http.createServer` 那一个函数里**（行号见索引）。按功能分四块：
 
-| 函数 | 行 | 被谁用 / 说明 |
+| 块 | 路由 |
+|---|---|
+| 配置 / 根目录 | `GET·POST /api/config`、`POST /api/roots`、`DELETE /api/roots/:id` |
+| **收件箱** | `GET /api/edge`、`GET /api/events`(SSE)、`GET /api/inbox`、`GET /api/inbox/targets`、`POST /api/inbox/ingest` |
+| 磁盘浏览 / 目录 | `GET /api/fs/drives`、`GET /api/fs/dirs`、`GET /api/list`、`GET /api/tree` |
+| 文件读写 | `GET /api/file`、`GET·POST /api/text`、`PUT /api/upload`、`POST /api/mkdir`、`/api/mkdir-template`、`/api/rename`、`/api/rename-batch`、`/api/move`、`/api/copy`、`POST /api/delete` |
+| 回收站 | `GET /api/trash`、`POST /api/trash/restore`、`POST /api/trash/purge` |
+| 搜索 / 杂项 | `GET /api/search`、`GET /api/duplicates`、`POST /api/clipboard`、`POST /api/reveal`、`GET /api/sysinfo` |
+| 虚拟分类 | `GET·POST /api/vgroups`、`/api/vgroups/update`、`/assign`、`/delete`、`/materialize` |
+
+### 2.2 核心内部函数（改一个影响一片，必须全量回归）
+
+| 函数 | 干什么 / 注意 |
+|---|---|
+| `LOG()` / `flushLog()` | **内存攒批 + 每秒落盘**（不要改回 `appendFileSync`） |
+| `psArgs()` | **PowerShell 必须走 `-EncodedCommand`**（踩坑 ②） |
+| `withClipboardLock()` | 系统剪贴板写入串行化（踩坑 ①） |
+| `cleanPsOutput()` | 剥掉 CLIXML，露出真实错误 |
+| `runCommand()` | **异步**执行外部命令，替代 `spawnSync` |
+| **`resolveSafe(root, rel)`** | **安全命脉：所有路径入口都必须过它** |
+| `getRoot()` | 所有带 `root` 参数的接口 |
+| `uniqueName()` | 上传 / 改名 / 移动 / 转实体 / 入库（防重名，自动加 `(1)`） |
+| `readGroupsClean()` | `/api/list`、`/api/vgroups`、`resolveScope` 共用 |
+| `listDir()` / `statEntry()` / `hasSubDir()` | 列目录相关 |
+| `sortEntries()` | 服务端排序 |
+| **`resolveScope(scope)`** | **`/api/list` + 全部批量接口**（分页与全选的交汇点） |
+| `expandItems(b)` | 批量删除 / 移动 / 重命名 / 剪贴板 |
+
+### 2.3 收件箱模块（新文件到达 → 入库卡片）
+
+**它解决什么**：Edge 下载完（或拖进网页上传）的文件，自动弹卡片问「进哪个库 + 要不要改名」。
+
+**三条硬规矩：**
+
+1. **收件箱目录不在网页里配** —— 直接同步 Edge 的 `download.default_directory`（`readEdgePrefs()`），
+   用户改 Edge 一处就够。网页设置里只做只读展示 + 「重新读取 Edge 设置」。
+2. **只认「根目录顶层的新增文件」**，且必须等大小稳定 + 同名 `.crdownload` 消失才算下载完成。
+3. **网页自己产生的文件必须登记忽略**（`markSelfWrite()`），否则监听器把自己的操作当"新下载"。
+
+**两个入口，一个出口**：
+
+| 入口 | 触发 | origin |
 |---|---|---|
-| `LOG(msg)` | 158 | **内存攒批 + 每秒落盘**（不要再改回 `appendFileSync`） |
-| `flushLog()` | 164 | 批量写盘，超 1MB 自动清空 |
-| `psArgs(script)` | 191 | **PowerShell 必须走 `-EncodedCommand`**（见踩坑 ②） |
-| `withClipboardLock(fn)` | 200 | 剪贴板写入串行化（见踩坑 ①） |
-| `cleanPsOutput()` | 207 | 剥掉 CLIXML，露出真实错误 |
-| `runCommand()` | 219 | **异步**执行外部命令，替代 `spawnSync` |
-| **`resolveSafe(root, rel)`** | **262** | **所有**路径入口（安全命脉） |
-| `getRoot(id)` | 280 | 所有带 `root` 参数的接口 |
-| `uniqueName(dir, name)` | 286 | 上传 / 改名 / 移动 / 转实体 / **入库**（防重名） |
-| `readGroupsClean(root, names)` | 350 | `/api/list`、`/api/vgroups`、`resolveScope` |
-| `statEntry` / `hasSubDir` / `listDir` | 489 / 511 / 524 | 列目录相关 |
-| `sortEntries(list, sort)` | 542 | 服务端排序 |
-| **`resolveScope(scope)`** | **559** | **`/api/list` + 全部批量接口**（分页与全选的交汇点） |
-| `expandItems(b)` | 593 | 批量删除 / 移动 / 重命名 / 剪贴板 |
+| 后台监听 | 根目录顶层冒出新文件（Edge 下载 / 手动拷入） | `'watch'` |
+| **拖进网页上传** | `PUT /api/upload` 成功（从资源管理器拖进窗口） | `'upload'` |
 
-### 收件箱模块（2026-09-22 新增，`server.js:600` 起）
+两者都调 **`dispatchNewFile()`**（策略只有一份）。上传分支额外两件事：先 `markSelfWrite(target)`
+（避免 watcher 再弹一次），再把**上传到的那个文件夹**作为卡片默认落点。
 
-| 函数 | 行 | 干什么 |
+**三档策略（`autoPolicy`）**：
+
+| 策略 | 后台发现的新文件 | 拖进网页上传的 |
 |---|---|---|
-| `readEdgePrefs()` | 638 | **同步 Edge 下载设置**（读 `Preferences` 的 `download.default_directory`），网页里只读展示，不另存一份 |
-| `markSelfWrite(abs)` | 675 | 网页自己写的文件登记忽略 —— **新增写操作必须调它**，见踩坑 ⑥ |
-| `snapshotTop(root)` | 695 | 根目录顶层文件名快照（用来判"谁是新的"） |
-| `waitFileReady(abs)` | 712 | 等下载写完：大小稳定 + 同名 `.crdownload` 消失 |
-| `matchSmartRule(name)` | 726 | 用 `config.smartRules` 判"文件名有没有意义" |
-| `queueInboxItem(...)` | 734 | 入队 + SSE 推给页面 |
-| **`ingestFile(...)`** | **753** | **入库唯一实现**：移动 + 改名（**后缀强制沿用原后缀**）+ 可选进虚拟分类 + 记住落点 + 记「最近常用」 |
-| `autoIngestQuiet(...)` | 820 | 全自动 / smart 判为"名字有意义"时的静默入库 |
-| **`dispatchNewFile(...)`** | **838** | **新文件唯一分派出口** —— watcher 和"拖进网页上传"共用一套策略，别各写一份 |
-| `scanRoot(root)` | 863 | 扫顶层差集 → 交给 `dispatchNewFile` |
-| `stopInbox` / `startInbox` | 889 / 898 | 挂/摘 `fs.watch`（roots 变化、开关变化都要重来） |
-| `ingestKey(t)` | 924 | 入库位置的唯一标识（虚拟分类靠 `gid`，文件夹靠 `path`） |
-| `collectDirs(...)` | 929 | 递归列文件夹：**DFS + depth**（前端靠 depth 做缩进层级） |
-| `listIngestTargets()` | 950 | 入库可选位置 + 每项的 `uses / lastAt / recent`（「最近常用」） |
+| `smart`（默认） | 文件名命中 `smartRules`（无意义）才弹，否则静默入库到上次落点 | 同理：无意义才弹，有意义就留在上传位置 |
+| `always` | 每个都弹卡片 | 每个都弹卡片 |
+| `never` | 静默入库到上次落点 | 不打扰，留在上传位置 |
 
-> **两个入口，一张卡片**：
-> ① 后台监听发现根目录顶层冒出新文件（Edge 下载 / 手动拷入）；
-> ② `PUT /api/upload` 上传成功（`server.js:1251`，从资源管理器拖进网页就是这条）。
-> 两者都调 `dispatchNewFile`。上传分支额外做两件事：先 `markSelfWrite`（避免 watcher 当新文件再弹一次），
-> 再把**上传到的那个文件夹**作为卡片默认落点（`item.target`）。
+**入库卡片（`openIngestCard`）**：
 
-> **「最近常用」规则**（用户定的，改之前先问）：
-> 入库过 **≥2 次**的位置 → `recent=true`，前端置顶到 `⭐ 最近常用` 分组；
-> 记忆窗口 `INGEST_HISTORY_MAX = 10`，**超过 10 次非它入库**就挤出去 → `uses` 递减到 0 → 标记消失；
-> **"直接进未归类"（目标 = 根目录本身）不计入这 10 次**（`ingestFile` 里的 `wentLoose` 判断）。
+- 缩略图预览 + **主名可改 / 后缀固定显示且不参与输入**（改名绝不丢后缀），不改名就按原名入库
+- 目标下拉：**按根目录 `optgroup` 分组 + 按 `depth` 全角空格缩进**（层级树），组内含
+  根目录（散-未归类）、各文件夹（DFS，限深 3 / 最多 400 个）、虚拟分类
+- **⭐ 最近常用**置顶；重名不覆盖；「跳过 / 全部跳过」留在原处
+- 一批上传不会传到一半就弹（前端 `inboxHeld` + `flushHeldInbox`）
+
+**「最近常用」规则（用户定的，改前先问）**：入库 **≥2 次**的位置置顶（标「用过 N 次」）；
+记忆窗口 `INGEST_HISTORY_MAX = 10`，**连续 10 次非它入库**就挤出去、标记消失；
+**"直接进未归类"不计入这 10 次**（`ingestFile` 里的 `wentLoose` 判断）。
+
+**关键函数**：`readEdgePrefs` `markSelfWrite` `snapshotTop` `waitFileReady` `matchSmartRule`
+`queueInboxItem` `ingestFile`（入库唯一实现）`autoIngestQuiet` `dispatchNewFile` `scanRoot`
+`stopInbox` / `startInbox` `ingestKey` `collectDirs` `listIngestTargets`。
 
 ---
 
-## 三、前端功能 → 行号（`public/app.js`）
+## 三、前端（`public/app.js`）
 
-### 配置与状态
-| 名字 | 行 | 说明 |
+### 3.1 配置与状态
+
+| 名字 | 说明 |
+|---|---|
+| `TUNING` | 前端阈值兜底（启动后被服务端 `limits` 覆盖） |
+| `S` | **全局可变状态** |
+| `S.internalClip` | 网页内部剪贴板（**≠ 系统剪贴板**） |
+| `S.selectAll` | 全选整个视图（含未加载） |
+| `LOOSE` / `VG_PREFIX` | 虚拟路径 `::loose::` / `::vg::`（**不能当真实路径发给后端**，踩坑 ④） |
+
+### 3.2 取数与渲染
+
+`api()` / `apiPost()`（**唯一 HTTP 出口**）、`renderRoots` `reloadConfig` `selectRoot`、
+`buildTree` `expandNode` `bindTreeRow`、`navigateTo` `loadDir` `reloadCurrent` `loadMore`、
+`sorted` `filtered` `injectedNodes` `renderContent` `renderGrid` `renderList` `fillThumb`、
+`visibleEntries()`（带缓存）/ `invalidateVisible()`、`Thumb`（IndexedDB 缩略图缓存）。
+
+### 3.3 归类 / 转实体（业务核心）
+
+`openNewVGroupDialog` `assignToGroup` `unassignFiles` `deleteVGroup`、**`openMaterializeDialog`**（转实体）。
+
+### 3.4 复制到剪贴板（**踩过两次坑**）
+
+三个入口（底部按钮 / 右键菜单 / `Ctrl+C`）→ **唯一实现 `copyToClipboard()`**。
+`S.internalClip` 是**另一回事**（只有网页内部粘贴认它）。见踩坑 ③。
+
+### 3.5 收件箱卡片
+
+`connectInbox()`（SSE + 启动兜底拉取）→ `enqueueInbox()` → `showNextIngest()` → **`openIngestCard()`**。
+`flushHeldInbox()` 负责"一批上传完再弹"。`openSettings()` 里有 Edge 同步只读展示与监听开关。
+
+### 3.6 事件绑定（已拆分，**不要再加链式调用**）
+
+`bindEvents()` **只负责调用 7 个子函数**：`bindToolbarEvents` `bindLogEvents` `bindNavEvents`
+`bindContentEvents` `bindOverlayEvents` `bindDragDropEvents` `bindKeyboardEvents`。
+详见踩坑 ①。
+
+### 3.7 拖拽：三种拖拽，判据只有 `dragKind()`
+
+| 类型 | 判据 | 处理 |
 |---|---|---|
-| `TUNING` | 14 | 前端阈值兜底（启动后会被服务端 `limits` 覆盖） |
-| `S` | 23 | **全局可变状态** |
-| `S.internalClip` | 29 | 网页内部剪贴板（**≠ 系统剪贴板**） |
-| `S.selectAll` | 40 | 全选整个视图 |
+| `internal` 网页内部拖拽（素材 → 目录树）= 移动 | `S.dragPaths` 非空，**永远优先** | `moveItems` / `assignToGroup` / `unassignFiles` |
+| `external` 从资源管理器拖进来的真实文件 = 上传 | `dataTransfer.types` 含 `'Files'` | `uploadFiles()` |
+| `other` 从别的网页拖来的元素/链接/文字 | 两个都不满足 | **有意什么都不做** |
 
-### 取数 / 渲染
-| 功能 | 行 |
-|---|---|
-| **唯一 HTTP 出口** `api()` / `apiPost()` | 124 / 133 |
-| `renderRoots` / `reloadConfig` / `selectRoot` | 367 / 402 / 417 |
-| `buildTree` / `expandNode` / `bindTreeRow` | 431 / 550 / 453 |
-| `navigateTo()` | 650 |
-| `loadDir(p, append)` | 671 |
-| `reloadCurrent()` / `loadMore()` | 717 / 730 |
-| `sorted()` / `filtered()` / `injectedNodes()` | 799 / 814 / 820 |
-| `renderContent(append)` | 835 |
-| `renderGrid` / `renderList` | 876 / 910 |
-| `fillThumb()` | 944 |
-| **`visibleEntries()`（带缓存）** / `invalidateVisible()` | 1129 / 1138 |
-| `Thumb`（IndexedDB 缩略图缓存） | 229 |
-
-### 归类 / 转实体（**业务核心**）
-| 功能 | 行 |
-|---|---|
-| `openNewVGroupDialog()` | 1537 |
-| `assignToGroup()` / `unassignFiles()` | 1503 / 1517 |
-| **`openMaterializeDialog()`** | **1613** |
-| `deleteVGroup()` | 1598 |
-| 散-未归类常量 `LOOSE` / `VG_PREFIX` | 56 起 |
-
-### 复制到剪贴板（**踩过两次坑**）
-| 入口 | 行 |
-|---|---|
-| 底部按钮 | 1158 |
-| 右键菜单 | 2420 |
-| `Ctrl+C` | 2983 |
-| **唯一实现** `copyToClipboard()` | **2533** |
-| 网页内部复制 `S.internalClip` | **和上面毫无关系** |
-
-### 收件箱 / 新文件入库卡片（2026-09-22 新增）
-| 功能 | 行 |
-|---|---|
-| `connectInbox()` —— SSE 接入 + 启动时兜底拉 `/api/inbox` | 1850 |
-| `enqueueInbox(item)` —— 去重入队；**上传进行中先攒进 `inboxHeld`** | 1861 |
-| `flushHeldInbox()` —— 一批上传全部落定后再开始弹（`uploadFiles` 末尾调） | 1872 |
-| `showNextIngest()` —— 一次只弹一张 | 1880 |
-| **`openIngestCard(item)`** —— 卡片本体：预览 + **主名/后缀分离** + 目标选择 + **居中 + 遮罩** | **1887** |
-| 　└ 目标下拉渲染：按根 `optgroup` 分组、按 `depth` 用全角空格缩进、`⭐ 最近常用` 置顶 | 1897 起 |
-| `openSettings()` —— Edge 同步**只读展示** + 策略 + 监听开关 | 2110 |
-| `isFileDrag(ev)` —— dataTransfer 里有没有**真实文件** | 2591 |
-| **`dragKind(ev)`** —— **拖拽判据的唯一出口**：`internal` / `external` / `other` | **2608** |
-| `bindDragDropEvents()` —— **dragover/drop 必须 preventDefault**，见踩坑 ⑦ | 2787 |
-
-### 事件绑定（已拆分，**不要再加链式调用**）
-| 函数 | 行 | 行数 |
-|---|---|---|
-| `bindEvents()` | 2619 | **只负责调用 7 个子函数** |
-| `bindToolbarEvents()` | 2630 | 28 |
-| `bindLogEvents()` | 2658 | 25 |
-| `bindNavEvents()` | 2683 | 25 |
-| `bindContentEvents()` | 2708 | 51 |
-| `bindOverlayEvents()` | 2759 | 28 |
-| `bindDragDropEvents()` | 2787 | 142 |
-| `bindKeyboardEvents()` | 2929 | 77 |
-
-### 其它
-| 功能 | 行 |
-|---|---|
-| 文件操作 `renameEntry` / `moveItems` / `openNewFolderDialog` | 1409 / 1696 / 1730 |
-| 文本编辑 / 上传 | 1767 / 1794 |
-| 投放素材助手 `openDeliverMenu` / `openDeliverPanel` | 2199 / 2243 |
-| `openHelp()` | 2318 |
-| 搜索 `onSearchInput()` / `doSearch()` | 2346 / 2358 |
-| 右键菜单 `showCtxMenu()` | 2379 |
-| `revealInExplorer()` | 2526 |
-| 添加根目录 `openAddRootDialog()` | 2006 |
-| 回收站 `openTrash()` / `renderTrash()` | 1033 / 1045 |
-| 灯箱 `openEntry` / `openLightbox` | 1219 / 1228 |
-| 启动 `init()`（末尾调 `connectInbox()`） | 3006 |
+判据**只有一处** `dragKind(ev)`，三个 handler 都调它。详见踩坑 ⑦。
 
 ---
 
 ## 四、⚠️ 踩坑记录（真实发生过的，别再犯）
 
-### ① 拆分函数后，**必须验证每个函数被调用几次**
+### ① 拆分函数后，**必须数每个函数被调用几次**
 
-用"插入边界"技巧拆 `bindEvents` 时形成了链式调用：
+用"插入边界"拆 `bindEvents` 时形成了链式调用（`bindLogEvents` 末尾又调 `bindNavEvents`…），
+叠加结果 **`bindKeyboardEvents` 被调 6 次** → `keydown` 注册 6 个 → 按一次 `Ctrl+C` 发 6 个请求
+→ 6 个 PowerShell 抢剪贴板 → `CLIPBRD_E_CANT_OPEN`。
 
-```js
-function bindEvents() {
-  bindLogEvents();     // ← 它末尾又调 bindNavEvents()
-  bindNavEvents();     // ← 它末尾又调 bindContentEvents()
-  ...
-}
-```
+**改完跑这条检查**（应该只有 `bindEvents` 里的 7 个 + `init` 里的 1 个）：
 
-叠加结果：**`bindKeyboardEvents` 被调用 6 次** → `keydown` 监听器注册 6 个 →
-按一次 `Ctrl+C` 发 6 个请求 → 6 个 PowerShell 抢剪贴板 → `CLIPBRD_E_CANT_OPEN`。
-
-**改完必须跑这条检查**：
 ```powershell
 Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
-# 应该只有 bindEvents 里的 7 个 + init 里的 1 个
 ```
 
 ### ② PowerShell 传参必须用 `-EncodedCommand`
 
-用 `-Command` 拼字符串时，路径含空格/括号（例如 `9月9日 (1)(1).png`）会被命令行拆开。
-`-EncodedCommand` 传 UTF-16LE Base64，**任何字符都不会被解析**。
-
-同样地，`[Console]::OutputEncoding=[Text.Encoding]::UTF8` 必加，否则中文输出乱码。
+`-Command` 拼字符串时，路径含空格/括号（如 `9月9日 (1)(1).png`）会被命令行拆开。
+`-EncodedCommand` 传 UTF-16LE Base64，**任何字符都不会被解析**；
+同时 `[Console]::OutputEncoding=[Text.Encoding]::UTF8` 必加，否则中文乱码。
 
 ### ③ "复制"有两个完全不同的东西
 
 - `copyToClipboard()` → **Windows 系统剪贴板**（能粘到豆包）
 - `S.internalClip` → **网页内部剪贴板**（只能粘贴到别的文件夹）
 
-**曾经 `Ctrl+C` 绑的是后者，还弹"已复制 N 项"的假提示**，导致排查了十几轮。
+**曾经 `Ctrl+C` 绑的是后者，还弹"已复制 N 项"的假提示**，排查了十几轮。
 **规矩：凡"复制"字样，必须写清是哪一个。**
 
 ### ④ 虚拟路径不能当真实路径发给后端
 
-`LOOSE`（`::loose::`）和 `VG_PREFIX`（`::vg::`）是**虚拟路径**，
+`LOOSE`（`::loose::`）和 `VG_PREFIX`（`::vg::`）是虚拟路径，
 所有发给后端的 path 都要先过 `realPath()`；所有批量操作都要先过滤 `isVirtualPath()`。
 
-### ⑤ 改前端代码后，**必须 Ctrl+F5 才能生效**
+### ⑤ 改前端必须 Ctrl+F5；改后端必须重启 node
 
 浏览器里的 JS 是页面加载那一刻装进去的 —— 重启服务、重启电脑都不影响它。
-**排查"界面没变化"之前，先确认页面刷新过。**
-（改后端则相反：**必须重启 `node`**，热更新不存在。）
+后端则相反：`node` 没有热更新，改一行也要重启。
+**"界面/行为没变化"的排查顺序：先确认页面刷新过、服务重启过。**
 
 ### ⑥ 收件箱：网页自己的写操作**必须**调 `markSelfWrite()`
 
 监听器靠"顶层文件名差集"判断新文件。上传 / 改名 / 移动 / 从回收站恢复，
-在监听器眼里**全都是"凭空冒出来的新文件"** —— 不登记就会把自己的操作弹成"新下载"。
+在它眼里**全是"凭空冒出来的新文件"** —— 不登记就会把自己的操作弹成"新下载"。
 
-已登记的：`/api/upload`、`/api/text`、`/api/rename`、`/api/rename-batch`、
-`/api/move`、`/api/copy`、`/api/trash/restore`。
+已登记：`/api/upload`、`/api/text`、`/api/rename`、`/api/rename-batch`、`/api/move`、`/api/copy`、
+`/api/trash/restore`、`ingestFile`。
 **以后新增任何"往根目录顶层写文件"的接口，都要加一行 `markSelfWrite(目标绝对路径)`。**
 
 `markSelfWrite` 做两件事（双保险）：写忽略表（60 秒）+ 直接塞进该根的快照集合。
 
-### ⑦ 页面上有三种拖拽，判据必须收敛到 `dragKind()`；`dragover`/`drop` 必须 `preventDefault()`
+### ⑦ 三种拖拽：判据必须收敛到 `dragKind()`；`dragover`/`drop` 必须 `preventDefault()`
 
-页面上同时跑着三种拖拽，**判据不许散在各个 handler 里**（散开就会串：上传污染移动、移动污染上传）：
-
-| 类型 | 判据 | 处理 |
-|---|---|---|
-| `internal` 网页内部拖拽（素材 → 目录树）= 移动 | `S.dragPaths` 非空（`dragstart` 2783 自己设的），**永远优先** | `moveItems` / `assignToGroup` / `unassignFiles` |
-| `external` 从资源管理器拖进来的真实文件 = 上传 | `dataTransfer.types` 含 `'Files'` | `uploadFiles()` |
-| `other` 从别的网页拖来的元素/链接/文字 | 两个都不满足 | **有意什么都不做** |
-
-判据只有一处：`dragKind(ev)`（**2608**），三个 handler 都调它。
-内部拖拽只 `setData('text/plain')`，`types` 里**不含** `Files` —— 两条判据天然正交，且内部优先短路。
+判据散在各 handler 里就会串（上传污染移动、移动污染上传）。判据只有 `dragKind(ev)` 一处。
 
 **两个必须记住的坑：**
 
 1. **`dragover` 不 `preventDefault()` 就没有 `drop`**：外部文件拖入时浏览器判定"页面不是放置目标"，
-   松手时直接开新标签页打开文件（页面被截胡，上传永远收不到）。所以 `dragover` 里对 `external`
-   要 `preventDefault()` + `dropEffect='copy'`，`drop` 里**开头无条件** `preventDefault()`。
-   （拖到浏览器标签栏/书签栏上仍会打开文件 —— 那是浏览器自己的区域，网页无权拦。）
-
+   松手时直接开新标签页打开文件（页面被截胡，上传永远收不到）。`drop` 里也要**开头无条件** `preventDefault()`。
+   （拖到浏览器标签栏/书签栏仍会打开文件 —— 那是浏览器自己的区域，网页无权拦。）
 2. **`dragleave` 不能用 `dragKind(ev)` 判**：Chrome 在 `dragleave` 时 `dataTransfer.types` **是空数组**，
-   会判成 `'other'` —— 据此 `return` 的话遮罩永远收不掉。
-   正确做法：看 `dragActive` 标志（`dragenter`/`dragover` 置位、`drop`/`dragend` 清），
-   并且 `document` 的 `dragend` 里兜底重置（拖拽被 Esc 取消时不触发 `dragleave`）。
+   会判成 `'other'` —— 据此 `return` 的话遮罩永远收不掉。要用 `dragActive` 标志，
+   并在 `document` 的 `dragend` 里兜底重置（拖拽被 Esc 取消时不触发 `dragleave`）。
 
-### ⑧ "拖进网页"和"后台发现"是两个入口，但只能有一份策略
+### ⑧ 两个入口必须共用一份策略
 
-`dispatchNewFile()`（838）是唯一分派出口：
-- 后台 watcher 发现根目录顶层新文件 → `origin='watch'`，静默档入库到 `lastIngestTarget`
-- `PUT /api/upload` 上传成功 → `origin='upload'`，静默档就留在上传位置（用户刚拖到哪就是哪）
-
+`dispatchNewFile()` 是新文件的唯一分派出口。
 **踩过的坑**：上传分支一开始只写了 `markSelfWrite()`（防 watcher 重复弹），
-结果"从资源管理器拖进网页"这条入口被彻底屏蔽，用户拖进去永远不弹卡片。
-正确顺序是：`markSelfWrite(target)` **之后**仍然要调 `dispatchNewFile(...origin:'upload')`。
+结果"从资源管理器拖进网页"这条入口被彻底屏蔽，永远不弹卡片。
+正确顺序：`markSelfWrite(target)` **之后**仍然要调 `dispatchNewFile(..., origin:'upload')`。
 
 ---
 
@@ -290,31 +241,31 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 
 | 症状 | 先查这里 |
 |---|---|
-| 复制到剪贴板失败 | `debug.log` → `copyToClipboard()` 2533 → `withClipboardLock` 200 → `psArgs` 191 |
+| 复制到剪贴板失败 | `debug.log` → `copyToClipboard()` → `withClipboardLock` → `psArgs` |
 | 一次操作触发多次 | **踩坑 ①**，跑那条检查命令 |
-| 归类后计数不对 | `resolveScope()` 559（同时服务 `/api/list` 和批量接口） |
-| 列表卡 / 白屏 | `/api/list` 1167 的分页参数；`renderContent` 是否被当全量渲染调用 |
-| 路径越权 | `resolveSafe()` 262 —— **所有**路径必须过它 |
-| 树上三角不显示 | `/api/tree` 1199 返回的 `hasChildren` |
+| 归类后计数不对 | `resolveScope()`（同时服务 `/api/list` 和批量接口） |
+| 列表卡 / 白屏 | `/api/list` 的分页参数；`renderContent` 是否被当全量渲染调用 |
+| 路径越权 | `resolveSafe()` —— **所有**路径必须过它 |
+| 树上三角不显示 | `/api/tree` 返回的 `hasChildren` |
 | 豆包侧边栏没反应 | `public/tools/doubao-helper.user.js`，先看豆包页 Console 的 `[素材助手]` |
 | 界面改了没反应 | **踩坑 ⑤**：页面刷新过吗；改的是后端吗（要重启 node） |
-| 下载完了却不弹入库卡片 | ①策略是不是 `smart` 且文件名"有意义"、或 `never`（这俩本来就静默）②设置里「监听根目录里的新文件」勾上没 ③`debug.log` 搜 `[收件箱]` → `startInbox()` 898 / `scanRoot()` 863 |
-| **拖进网页上传也不弹** | `PUT /api/upload` 1251 里 `dispatchNewFile(...)`（**之前这里只有 `markSelfWrite`，等于屏蔽了上传入口**）；改完必须重启 node |
-| 上传一次弹了两张卡 | `dispatchNewFile` 838 只该被调一次；`markSelfWrite` 必须在上传分支里调（否则 watcher 再当一次新文件） |
+| 下载完了却不弹入库卡片 | ①策略是 `smart` 且文件名"有意义"、或 `never`（本来就静默）②设置里「监听根目录里的新文件」勾上没 ③`debug.log` 搜 `[收件箱]` |
+| **拖进网页上传也不弹** | `/api/upload` 里是否调了 `dispatchNewFile`（只剩 `markSelfWrite` 就等于屏蔽入口，踩坑 ⑧）；改完必须重启 node |
+| 上传一次弹了两张卡 | `dispatchNewFile` 只该被调一次；`markSelfWrite` 必须在上传分支里 |
 | 网页自己的操作也弹卡片 | 那个写接口漏了 `markSelfWrite()`，见踩坑 ⑥ |
-| 卡片弹了但入库没反应 | `/api/inbox/ingest` 1094；目标根目录是否还在（`getRoot` 280） |
-| 目标列表没层级 / 不像树 | `collectDirs()` 929 的 `depth`、`shortLabel`；前端 `openIngestCard` 1897 起按 `optgroup` + 全角空格渲染 |
-| 「最近常用」不出现或该消失没消失 | `config.ingestHistory`（窗口 `INGEST_HISTORY_MAX=10`）；`uses>=2` 才置顶；**"进未归类"不计入**，见 `ingestFile` 753 的 `wentLoose` |
-| 拖文件进来变成打开新标签页 | **踩坑 ⑦**，看 `bindDragDropEvents` 2787 的 `dragover` |
-| 内部拖素材却触发了上传（或反之） | `dragKind()` 2608 —— 判据只该有这一处；看有没有 handler 自己判 `S.dragPaths` / `types` |
-| 拖拽遮罩（dropMask）卡住不收 | **踩坑 ⑦-2**：`dragleave` 不能用 `dragKind` 判；`dragActive`/`dragDepth` 要对成对 |
-| 改完 Edge 下载目录但网页没变 | 网页每次打开设置都重读 `readEdgePrefs()` 638，点「重新读取 Edge 设置」；Edge 开着"下载前询问"时手选的位置不可知 |
+| 卡片弹了但入库没反应 | `/api/inbox/ingest`；目标根目录是否还在（`getRoot`） |
+| 目标列表没层级 / 不像树 | `collectDirs()` 的 `depth` / `shortLabel`；前端按 `optgroup` + 全角空格渲染 |
+| 「最近常用」该出现没出现 / 该消失没消失 | `config.ingestHistory`；`uses>=2` 才置顶；**"进未归类"不计入**，见 `ingestFile` 的 `wentLoose` |
+| 拖文件进来变成打开新标签页 | **踩坑 ⑦-1**，看 `bindDragDropEvents` 的 `dragover` |
+| 内部拖素材却触发了上传（或反之） | `dragKind()` —— 判据只该有这一处 |
+| 拖拽遮罩（dropMask）卡住不收 | **踩坑 ⑦-2**：`dragleave` 不能用 `dragKind` 判 |
+| 改完 Edge 下载目录但网页没变 | 每次打开设置都会重读 `readEdgePrefs()`，点「重新读取 Edge 设置」；Edge 开着"下载前询问"时手选的位置不可知 |
 
 ---
 
 ## 六、配置与阈值（已收敛，不要再撒字面量）
 
-**后端** `server.js:82` 的 `DEFAULT_CONFIG.limits` —— 单一数据源，通过 `/api/config` 下发：
+**后端** `DEFAULT_CONFIG.limits` —— 单一数据源，通过 `/api/config` 下发：
 
 | 键 | 值 | 用途 |
 |---|---|---|
@@ -325,20 +276,19 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 | `searchDepth` | 8 | 搜索递归层数 |
 | `textPreviewBytes` | 2MB | 文本预览上限 |
 
-**前端** `app.js:14` 的 `TUNING` —— 只是兜底，启动时被服务端 `limits` 覆盖。
+**前端** `TUNING` —— 只是兜底，启动时被服务端 `limits` 覆盖。
 
-**收件箱相关配置**（都在 `server.js:67` 的 `DEFAULT_CONFIG` 里，经 `/api/config` 存进 `data.db` 的 `settings` 表）：
+**收件箱相关配置**（都在 `DEFAULT_CONFIG`，存进 `data.db` 的 `settings` 表）：
 
 | 键 | 值 | 用途 |
 |---|---|---|
-| `autoPolicy` | `smart` \| `always` \| `never` | 新文件到达时：智能判定 / 总是询问 / 全自动入库 |
-| `inboxEnabled` | `true` | 是否监听根目录的新文件（关掉就完全不打扰） |
-| `lastIngestTarget` | `{root, path, gid}` | **全自动的落点**，每次入库后自动更新 |
-| `ingestHistory` | 最多 10 条 | **「最近常用」的记忆**：非"进未归类"的入库历史，用于置顶与淘汰 |
+| `autoPolicy` | `smart` \| `always` \| `never` | 新文件到达时的策略 |
+| `inboxEnabled` | `true` | 是否监听根目录的新文件 |
+| `lastIngestTarget` | `{root, path, gid}` | **全自动的落点**，每次入库后更新 |
+| `ingestHistory` | 最多 10 条 | **「最近常用」记忆**（不含"进未归类"） |
 | `smartRules` | 5 条正则 | 判"文件名有没有意义"（纯数字 / 16 进制串 / `img_1234` …） |
 
-> ⚠️ **收件箱目录不在配置里**。它永远实时读 Edge 的 `download.default_directory`
-> （`readEdgePrefs()` 635）—— 用户只改 Edge 一处，网页自动跟随。
+> ⚠️ **收件箱目录不在配置里**，永远实时读 Edge 的 `download.default_directory`。
 
 **仍未收敛的**：油猴脚本/扩展里的 `http://127.0.0.1:8899`、`MAX_BYTES=200MB`。
 
@@ -346,7 +296,7 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 
 ## 七、已完成 / 未完成的优化
 
-### ✅ 已完成（对应《代码质量总纲》）
+### ✅ 已完成
 
 | 项 | 成果 |
 |---|---|
@@ -355,16 +305,17 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 | 性能（后端） | `LOG()` 每请求同步写盘 → 内存攒批 + 每秒落盘 |
 | 性能（后端） | `spawnSync` → 异步 `runCommand`，不再阻塞事件循环 |
 | 性能（前端） | `visibleEntries()` 8 处重复排序 → 1 次计算 + 缓存 |
-| 死代码 | 删除未使用的 `MIGRATED` |
 | 错误处理诚实 | CLIXML 清洗，露出真实错误原因 |
-| **收件箱监听**（2026-09-22） | Edge 下载设置同步 + `fs.watch` 三档策略 + 入库卡片（可选目标 + 改名后缀保护 + 自产不弹） |
-| **拖拽截胡**（2026-09-22） | 外部文件拖入不再被浏览器打开（踩坑 ⑦） |
+| 死代码 | 删除未使用的 `MIGRATED` |
+| **收件箱**（2026-09-22） | Edge 下载设置同步 + `fs.watch` 三档策略 + 入库卡片（层级目标 + 改名后缀保护 + 最近常用 + 自产不弹） |
+| **拖拽隔离**（2026-09-22） | 三种拖拽判据收敛到 `dragKind()`；外部文件拖入不再被浏览器截胡 |
+| **文档自动化**（2026-09-22） | 行号索引改由 `map.js` 生成，手写文档不再含行号 |
 
 ### ⏳ 未完成（风险较高，需单独一轮）
 
 | 项 | 为什么先停 |
 |---|---|
-| 拆 33 个路由 handler | 每个 handler 要整段搬迁（`if` 链不能用插入边界切开），路由是全局唯一入口 |
+| 拆 37 个路由 handler | 每个 handler 要整段搬迁（`if` 链不能用插入边界切开），路由是全局唯一入口 |
 | `listDir` 逐文件 `stat` 加缓存 | 涉及正确性，缓存失效判错会显示过期数据 |
 | 前端 41 处裸拼 `/api/` URL | 需要一层 API 封装，改动面广 |
 
@@ -374,13 +325,12 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 
 ```
 D:\文件管理\.git
-25b6eb2  baseline: 漫剧素材管理器可用版
-617e364  fix: Ctrl+C 触发 6 次复制 & 剪贴板并发抢占
 ```
-
-`.gitignore` 已排除运行时数据（`data.db*`、`debug.log`、`*.bak`）。
 
 ```powershell
-git checkout -- server.js     # 撤销单个文件
-git reset --hard 617e364      # 回到某次提交
+git log --oneline            # 看历史
+git checkout -- server.js    # 撤销单个文件
+git show HEAD --stat         # 看这次改了什么
 ```
+
+`.gitignore` 已排除运行时数据（`data.db*`、`debug.log`、`*.bak`、`_dist/`）。
