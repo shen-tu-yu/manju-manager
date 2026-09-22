@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/22 16:41:15
+> 生成时间：2026/9/22 23:02:57
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -12,7 +12,7 @@
 |---|---|
 | `server.js` | 1812 |
 | `db.js` | 155 |
-| `public/app.js` | 3028 |
+| `public/app.js` | 3034 |
 | `public/index.html` | 147 |
 | `public/style.css` | 725 |
 
@@ -168,86 +168,86 @@
 | 835 | `renderContent()` |  |
 | 870 | `appendTarget()` | append=true 时只追加还没渲染过的条目，不重建已有 DOM |
 | 876 | `renderGrid()` |  |
-| 910 | `renderList()` |  |
-| 944 | `fillThumb()` | 填充缩略图（图片 / 视频首帧） |
-| 1033 | `openTrash()` |  |
-| 1045 | `renderTrash()` |  |
-| 1100 | `trashRestore()` |  |
-| 1111 | `trashPurge()` |  |
-| 1129 | `visibleEntries()` |  |
-| 1138 | `invalidateVisible()` | 数据变了就作废缓存（renderContent 开头会调） |
-| 1140 | `updateSelectionStatus()` |  |
-| 1194 | `clickSelect()` |  |
-| 1215 | `previewable()` |  |
-| 1219 | `openEntry()` |  |
-| 1228 | `openLightbox()` |  |
-| 1235 | `closeLightbox()` |  |
-| 1241 | `renderLightbox()` |  |
-| 1275 | `renderStrip()` |  |
-| 1303 | `lbStep()` |  |
-| 1312 | `selectedItems()` |  |
-| 1319 | `isSelected()` | 某个条目是否处于「选中」状态（全选模式下，连还没加载出来的也算） |
-| 1324 | `scopePayload()` | 当前视图范围 —— 交给后端自己算出「全部文件」，不受分页限制 |
-| 1335 | `viewLabel()` | 当前视图叫什么（写日志用） |
-| 1345 | `selectionBody()` | 批量操作的请求体：全选时给 scope，否则给明确 items |
-| 1352 | `clearSelectAll()` |  |
-| 1354 | `deleteSelected()` |  |
-| 1409 | `renameEntry()` |  |
-| 1423 | `openBatchRename()` |  |
-| 1503 | `assignToGroup()` | 把文件归入某个虚拟分类 —— 只写引用，文件本体不动 |
-| 1517 | `unassignFiles()` | 取消归类：从所有虚拟分类里移除引用 |
-| 1537 | `openNewVGroupDialog()` | 虚拟新建：创建一个虚拟分类，并把当前选中的文件归进去 |
-| 1587 | `renameVGroup()` |  |
-| 1598 | `deleteVGroup()` |  |
-| 1613 | `openMaterializeDialog()` | 虚拟分类 -> 实体文件夹：真正落到硬盘上，可选「平移」或「复制」 |
-| 1696 | `moveItems()` |  |
-| 1711 | `pasteClipboard()` |  |
-| 1728 | `newFolderHere()` |  |
-| 1730 | `openNewFolderDialog()` |  |
-| 1767 | `openTextEditor()` |  |
-| 1794 | `uploadFiles()` |  |
-| 1825 | `uploadOne()` |  |
-| 1850 | `connectInbox()` | 接上后端的 SSE：新文件到达主动推过来，前端不轮询 |
-| 1861 | `enqueueInbox()` |  |
-| 1872 | `flushHeldInbox()` | 一批上传全部落定后再开始弹卡片，避免传到一半就跳出来 |
-| 1880 | `showNextIngest()` | 一次只弹一张卡片，处理完自动弹下一张 |
-| 1887 | `openIngestCard()` |  |
-| 2006 | `openAddRootDialog()` |  |
-| 2097 | `showModal()` |  |
-| 2103 | `closeModal()` |  |
-| 2110 | `openSettings()` |  |
-| 2199 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
-| 2212 | `checkMjaInstalled()` | / |
-| 2237 | `dvStatusHTML()` |  |
-| 2243 | `openDeliverPanel()` |  |
-| 2318 | `openHelp()` |  |
-| 2346 | `onSearchInput()` |  |
-| 2358 | `doSearch()` |  |
-| 2379 | `showCtxMenu()` |  |
-| 2439 | `renderCtxMenu()` |  |
-| 2458 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
-| 2491 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
-| 2507 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
-| 2524 | `hideCtxMenu()` |  |
-| 2526 | `revealInExplorer()` |  |
-| 2533 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
-| 2542 | `checkDuplicates()` |  |
-| 2558 | `showDragGhost()` |  |
-| 2567 | `moveDragGhost()` |  |
-| 2573 | `hideDragGhost()` |  |
-| 2577 | `setDropHints()` |  |
-| 2583 | `clearDropTargets()` |  |
-| 2591 | `isFileDrag()` | / |
-| 2608 | `dragKind()` | / |
-| 2619 | `bindEvents()` | / |
-| 2630 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
-| 2658 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
-| 2683 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
-| 2708 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
-| 2759 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
-| 2787 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
-| 2929 | `bindKeyboardEvents()` | / |
-| 3006 | `init()` |  |
+| 911 | `renderList()` |  |
+| 946 | `fillThumb()` | 填充缩略图（图片 / 视频首帧） |
+| 1038 | `openTrash()` |  |
+| 1050 | `renderTrash()` |  |
+| 1105 | `trashRestore()` |  |
+| 1116 | `trashPurge()` |  |
+| 1134 | `visibleEntries()` |  |
+| 1143 | `invalidateVisible()` | 数据变了就作废缓存（renderContent 开头会调） |
+| 1145 | `updateSelectionStatus()` |  |
+| 1199 | `clickSelect()` |  |
+| 1220 | `previewable()` |  |
+| 1224 | `openEntry()` |  |
+| 1233 | `openLightbox()` |  |
+| 1240 | `closeLightbox()` |  |
+| 1246 | `renderLightbox()` |  |
+| 1280 | `renderStrip()` |  |
+| 1308 | `lbStep()` |  |
+| 1317 | `selectedItems()` |  |
+| 1324 | `isSelected()` | 某个条目是否处于「选中」状态（全选模式下，连还没加载出来的也算） |
+| 1329 | `scopePayload()` | 当前视图范围 —— 交给后端自己算出「全部文件」，不受分页限制 |
+| 1340 | `viewLabel()` | 当前视图叫什么（写日志用） |
+| 1350 | `selectionBody()` | 批量操作的请求体：全选时给 scope，否则给明确 items |
+| 1357 | `clearSelectAll()` |  |
+| 1359 | `deleteSelected()` |  |
+| 1414 | `renameEntry()` |  |
+| 1428 | `openBatchRename()` |  |
+| 1508 | `assignToGroup()` | 把文件归入某个虚拟分类 —— 只写引用，文件本体不动 |
+| 1522 | `unassignFiles()` | 取消归类：从所有虚拟分类里移除引用 |
+| 1542 | `openNewVGroupDialog()` | 虚拟新建：创建一个虚拟分类，并把当前选中的文件归进去 |
+| 1592 | `renameVGroup()` |  |
+| 1603 | `deleteVGroup()` |  |
+| 1618 | `openMaterializeDialog()` | 虚拟分类 -> 实体文件夹：真正落到硬盘上，可选「平移」或「复制」 |
+| 1701 | `moveItems()` |  |
+| 1716 | `pasteClipboard()` |  |
+| 1733 | `newFolderHere()` |  |
+| 1735 | `openNewFolderDialog()` |  |
+| 1772 | `openTextEditor()` |  |
+| 1799 | `uploadFiles()` |  |
+| 1830 | `uploadOne()` |  |
+| 1855 | `connectInbox()` | 接上后端的 SSE：新文件到达主动推过来，前端不轮询 |
+| 1866 | `enqueueInbox()` |  |
+| 1877 | `flushHeldInbox()` | 一批上传全部落定后再开始弹卡片，避免传到一半就跳出来 |
+| 1885 | `showNextIngest()` | 一次只弹一张卡片，处理完自动弹下一张 |
+| 1892 | `openIngestCard()` |  |
+| 2011 | `openAddRootDialog()` |  |
+| 2102 | `showModal()` |  |
+| 2108 | `closeModal()` |  |
+| 2115 | `openSettings()` |  |
+| 2204 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
+| 2217 | `checkMjaInstalled()` | / |
+| 2242 | `dvStatusHTML()` |  |
+| 2248 | `openDeliverPanel()` |  |
+| 2323 | `openHelp()` |  |
+| 2351 | `onSearchInput()` |  |
+| 2363 | `doSearch()` |  |
+| 2384 | `showCtxMenu()` |  |
+| 2444 | `renderCtxMenu()` |  |
+| 2463 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
+| 2496 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
+| 2512 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
+| 2529 | `hideCtxMenu()` |  |
+| 2531 | `revealInExplorer()` |  |
+| 2538 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
+| 2547 | `checkDuplicates()` |  |
+| 2563 | `showDragGhost()` |  |
+| 2572 | `moveDragGhost()` |  |
+| 2578 | `hideDragGhost()` |  |
+| 2582 | `setDropHints()` |  |
+| 2588 | `clearDropTargets()` |  |
+| 2596 | `isFileDrag()` | / |
+| 2613 | `dragKind()` | / |
+| 2624 | `bindEvents()` | / |
+| 2635 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
+| 2663 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
+| 2688 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
+| 2713 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
+| 2764 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
+| 2792 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
+| 2935 | `bindKeyboardEvents()` | / |
+| 3012 | `init()` |  |
 
 ### 前端顶层常量
 
@@ -274,7 +274,7 @@
 | 229 | `Thumb` |  |
 | 341 | `thumbQueue` |  |
 | 351 | `lazyObs` |  |
-| 2194 | `DELIVER_TARGETS` |  |
+| 2199 | `DELIVER_TARGETS` |  |
 
 ## 五、db.js（155 行）
 

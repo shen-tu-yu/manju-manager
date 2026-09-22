@@ -219,7 +219,7 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 
 判据散在各 handler 里就会串（上传污染移动、移动污染上传）。判据只有 `dragKind(ev)` 一处。
 
-**两个必须记住的坑：**
+**三个必须记住的坑：**
 
 1. **`dragover` 不 `preventDefault()` 就没有 `drop`**：外部文件拖入时浏览器判定"页面不是放置目标"，
    松手时直接开新标签页打开文件（页面被截胡，上传永远收不到）。`drop` 里也要**开头无条件** `preventDefault()`。
@@ -227,6 +227,12 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 2. **`dragleave` 不能用 `dragKind(ev)` 判**：Chrome 在 `dragleave` 时 `dataTransfer.types` **是空数组**，
    会判成 `'other'` —— 据此 `return` 的话遮罩永远收不掉。要用 `dragActive` 标志，
    并在 `document` 的 `dragend` 里兜底重置（拖拽被 Esc 取消时不触发 `dragleave`）。
+3. **`dragstart` 不是所有元素都触发**：HTML5 拖拽默认只让 `<img>` / `<a>` 可拖，
+   `div` 必须**显式** `draggable="true"`。漏了它的表现就是"**只有图片拖得动**" ——
+   视频卡片、文件夹卡片、没有缩略图的文件、列表行全都拖不动。
+   修法：`renderGrid`/`renderList` 里给卡片和行设 `draggable = true`；
+   缩略图里的 `<img>`/`<video>` 反过来设 `draggable = false`（让拖拽源统一是卡片）。
+   回收站卡片**故意不设**（那里的东西不该能拖），`dragstart` 里另加了 `S.mode === 'trash'` 的兜底。
 
 ### ⑧ 两个入口必须共用一份策略
 

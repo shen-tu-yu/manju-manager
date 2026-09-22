@@ -884,6 +884,7 @@ function renderGrid(list, append) {
     const card = document.createElement('div');
     card.className = 'card' + (e.isDir ? ' folder' : '') + (isSelected(e.path) ? ' selected' : '');
     card.dataset.path = e.path;
+    card.draggable = true;   // 少了这行：浏览器默认只让 <img> 能拖 → 表现就是"只有图片拖得动"
 
     const thumb = document.createElement('div');
     thumb.className = 'thumb';
@@ -924,6 +925,7 @@ function renderList(list, append) {
     const row = document.createElement('div');
     row.className = 'lrow' + (isSelected(e.path) ? ' selected' : '');
     row.dataset.path = e.path;
+    row.draggable = true;    // 同理：列表行也得显式声明可拖
     const icon = e.virtual ? (e.vgroup ? '🗂' : '📦')
       : e.isDir ? '📁'
         : (e.kind === 'image' ? '🖼' : e.kind === 'video' ? '🎬' : e.kind === 'audio' ? '🎵' : '📄');
@@ -975,6 +977,7 @@ function fillThumb(container, e, card, maxSide, small) {
         im.src = url;
         im.loading = 'lazy';
         im.alt = e.name;
+        im.draggable = false;      // 拖拽源统一是卡片，别让浏览器拖原生图片
         container.appendChild(im);
       } catch {
         container.innerHTML = '';
@@ -982,6 +985,7 @@ function fillThumb(container, e, card, maxSide, small) {
         im.src = fileUrl(S.rootId, e.path);
         im.loading = 'lazy';
         im.alt = e.name;
+        im.draggable = false;
         container.appendChild(im);
       }
     });
@@ -989,7 +993,7 @@ function fillThumb(container, e, card, maxSide, small) {
   }
 
   if (e.kind === 'image') { // svg / gif 直接用原图
-    container.innerHTML = `<img src="${esc(fileUrl(S.rootId, e.path))}" loading="lazy" alt="">`;
+    container.innerHTML = `<img src="${esc(fileUrl(S.rootId, e.path))}" loading="lazy" alt="" draggable="false">`;
     return;
   }
 
@@ -1005,6 +1009,7 @@ function fillThumb(container, e, card, maxSide, small) {
       v.preload = 'metadata';
       v.muted = true;
       v.playsInline = true;
+      v.draggable = false;
       v.src = fileUrl(S.rootId, e.path) + '#t=0.1';
       v.addEventListener('loadedmetadata', () => {
         badge.textContent = fmtDur(v.duration);
@@ -2793,8 +2798,9 @@ function bindDragDropEvents() {
 
   // 拖拽：内部移动
   content().addEventListener('dragstart', (ev) => {
+    if (S.mode === 'trash') { ev.preventDefault(); return; }        // 回收站里的东西不参与拖拽
     const el = ev.target.closest('.card, .lrow');
-    if (!el) return;
+    if (!el || el.classList.contains('head')) { ev.preventDefault(); return; }
     const entry = visibleEntries().find((x) => x.path === el.dataset.path);
     if (entry && entry.virtual) { ev.preventDefault(); return; }   // 虚拟节点本身不能拖
     if (!S.sel.has(el.dataset.path)) { S.sel.clear(); S.sel.add(el.dataset.path); updateSelectionStatus(); }
