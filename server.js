@@ -72,6 +72,7 @@ const DEFAULT_CONFIG = {
   autoPolicy: 'smart',       // smart | always | never
   inboxEnabled: true,        // 是否监听已挂载根目录里的"新文件到达"
   lastIngestTarget: null,    // 「全自动入库」的落点，记住上次选的 { root, path, gid }
+  ingestHistory: [],         // 「最近常用」的入库历史（最多 10 条，不含"进未归类"）
   showHidden: false,
   projectTemplate: ['01_场景', '02_人物', '03_分镜', '04_视频片段', '05_成片'],
   smartRules: [
@@ -105,7 +106,7 @@ function saveConfig() {
   try {
     const s = {};
     for (const k of ['port', 'host', 'title', 'autoPolicy', 'inboxEnabled', 'lastIngestTarget',
-      'showHidden', 'projectTemplate', 'smartRules', 'limits']) {
+      'ingestHistory', 'showHidden', 'projectTemplate', 'smartRules', 'limits']) {
       s[k] = config[k];
     }
     DB.setSettings(s);
@@ -613,6 +614,8 @@ async function expandItems(b) {
 
 const INBOX_TICK = 1500;              // 目录事件去抖：等一会儿再扫，避免下一个文件来三次事件扫三遍
 const INBOX_IGNORE_MS = 60 * 1000;    // 自产文件的忽略时间窗
+const INGEST_HISTORY_MAX = 10;        // 「最近常用」的记忆窗口：10 次入库（不含"进未归类"）里没再用的就忘掉
+const INGEST_TARGET_MAX = 400;        // 目标列表一次最多列多少个文件夹，防止大目录把卡片撑死
 
 const inboxPending = new Map();       // id -> item（等用户决定进哪个库）
 const inboxClients = new Set();       // SSE 连接
@@ -795,6 +798,19 @@ async function ingestFile(srcRoot, name, target, newBase) {
     path: toRel(tRoot.path, destDirAbs),
     gid: kind === 'vgroup' ? String(target.gid || '') : '',
   };
+
+  // 记忆「最近常用」：**只记非"进未归类"的入库**（用户要求：那 10 次里不算直接进未归类）
+  const wentLoose = kind !== 'vgroup' && destDirAbs.toLowerCase() === tRoot.path.toLowerCase();
+  if (!wentLoose) {
+    const hist = Array.isArray(config.ingestHistory) ? config.ingestHistory.slice() : [];
+    hist.unshift({
+      root: tRoot.id,
+      path: toRel(tRoot.path, destDirAbs),
+      gid: kind === 'vgroup' ? String(target.gid || '') : '',
+      at: Date.now(),
+    });
+    config.ingestHistory = hist.slice(0, INGEST_HISTORY_MAX);
+  }
   saveConfig();
 
   return { name: finalBase, root: tRoot.id, path: toRel(tRoot.path, destAbs), from: toRel(srcRoot.path, srcAbs), kind };
@@ -904,34 +920,61 @@ async function startInbox() {
   LOG(`[收件箱] 监听 ${ok}/${config.roots.length} 个根目录 · Edge 下载目录：${edge.dir}${edge.prompt ? '（Edge 开着"下载前询问保存位置"）' : ''}`);
 }
 
-/** 可选入库位置：每个根的文件夹（限深）+ 虚拟分类 + 根目录本身（散-未归类） */
+/** 入库位置的唯一标识（虚拟分类靠 gid 区分，文件夹靠相对路径） */
+function ingestKey(t) {
+  return (t && t.gid) ? `${t.root}|g:${t.gid}` : `${t.root}|d:${(t && t.path) || ''}`;
+}
+
+/** 递归列文件夹（DFS + 带层级 depth），最多 limit 个 */
+async function collectDirs(absDir, rel, depth, rootId, out, limit) {
+  if (depth > 3 || out.length >= limit) return;
+  let ds = [];
+  try { ds = await fsp.readdir(absDir, { withFileTypes: true }); } catch { return; }
+  const dirs = ds
+    .filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== RECYCLE_NAME)
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }));
+  for (const d of dirs) {
+    if (out.length >= limit) return;
+    const childRel = rel ? rel + '/' + d.name : d.name;
+    out.push({ kind: 'dir', root: rootId, path: childRel, gid: '', shortLabel: '📁 ' + d.name, depth });
+    await collectDirs(path.join(absDir, d.name), childRel, depth + 1, rootId, out, limit);
+  }
+}
+
+/**
+ * 可选入库位置：根目录（散-未归类）+ 各文件夹（DFS，带 depth 给前端做缩进）+ 虚拟分类。
+ * 每项带上 uses / lastAt / recent —— 前端据此把"最近常用"顶到最前面。
+ *   recent 的规则：**用过 ≥2 次**才算常用；最近的 INGEST_HISTORY_MAX(10) 次入库里没再用过，
+ *   它就自然掉出历史窗口 → uses 归零 → 标记消失。**"直接进未归类"的入库不计入这 10 次**。
+ */
 async function listIngestTargets() {
+  const hist = Array.isArray(config.ingestHistory) ? config.ingestHistory : [];
+  const memo = new Map();                       // key -> { uses, lastAt }
+  for (const h of hist) {
+    const k = ingestKey(h);
+    const cur = memo.get(k) || { uses: 0, lastAt: 0 };
+    cur.uses++;
+    if (Number(h.at) > cur.lastAt) cur.lastAt = Number(h.at) || 0;
+    memo.set(k, cur);
+  }
+
   const out = [];
   for (const root of config.roots) {
-    out.push({
-      kind: 'root', root: root.id, path: '', gid: '',
-      label: `📦 ${root.name} — 根目录（散-未归类）`,
-    });
-    let count = 0;
-    const queue = [{ abs: root.path, rel: '', d: 0 }];
-    while (queue.length && count < 400) {
-      const cur = queue.shift();
-      if (cur.d >= 3) continue;
-      let ds = [];
-      try { ds = await fsp.readdir(cur.abs, { withFileTypes: true }); } catch { continue; }
-      for (const d of ds) {
-        if (!d.isDirectory() || d.name.startsWith('.') || d.name === RECYCLE_NAME) continue;
-        const rel = cur.rel ? cur.rel + '/' + d.name : d.name;
-        out.push({ kind: 'dir', root: root.id, path: rel, gid: '', label: `📁 ${root.name} › ${rel}` });
-        if (++count >= 400) break;
-        queue.push({ abs: path.join(cur.abs, d.name), rel, d: cur.d + 1 });
-      }
-    }
+    const raw = [{ kind: 'root', root: root.id, path: '', gid: '', shortLabel: '📦 根目录（散-未归类）', depth: 1 }];
+    await collectDirs(root.path, '', 1, root.id, raw, INGEST_TARGET_MAX);
     for (const g of groupsOf(root)) {
-      out.push({ kind: 'vgroup', root: root.id, path: '', gid: g.id, label: `🗂 ${g.name}（虚拟分类）` });
+      raw.push({ kind: 'vgroup', root: root.id, path: '', gid: g.id, shortLabel: `🗂 ${g.name}（虚拟分类）`, depth: 1 });
+    }
+    for (const t of raw) {
+      const m = memo.get(ingestKey(t));
+      out.push(Object.assign({ rootName: root.name }, t, {
+        uses: m ? m.uses : 0,
+        lastAt: m ? m.lastAt : 0,
+        recent: !!m && m.uses >= 2,
+      }));
     }
   }
-  return { targets: out, lastTarget: config.lastIngestTarget || null };
+  return { targets: out, lastTarget: config.lastIngestTarget || null, historyMax: INGEST_HISTORY_MAX };
 }
 
 // ---------------------------------------------------------------- 路由
@@ -978,6 +1021,7 @@ const server = http.createServer(async (req, res) => {
         autoPolicy: config.autoPolicy,
         inboxEnabled: config.inboxEnabled !== false,
         lastIngestTarget: config.lastIngestTarget || null,
+        ingestHistory: config.ingestHistory || [],
         showHidden: config.showHidden,
         projectTemplate: config.projectTemplate,
         smartRules: config.smartRules,
