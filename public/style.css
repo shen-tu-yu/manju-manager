@@ -674,21 +674,28 @@ body.dragging { cursor: grabbing; }
 .up-bar .up-fill { height: 100%; width: 0; background: var(--accent); transition: width .15s; }
 
 /* ===================== 新文件入库卡片 ===================== */
+.ig-mask {
+  position: fixed; inset: 0; z-index: 1099;
+  background: rgba(6, 9, 14, .58); backdrop-filter: blur(1.5px);
+}
 .ingest-card {
-  position: fixed; right: 20px; bottom: 20px; z-index: 1100;
-  width: 470px; max-width: calc(100vw - 40px);
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1100;
+  width: 560px; max-width: calc(100vw - 48px);
   background: var(--panel-2); border: 1px solid var(--accent);
-  border-radius: 12px; box-shadow: 0 10px 34px rgba(0, 0, 0, .5);
+  border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
   overflow: hidden; animation: ig-in .18s ease-out;
 }
-@keyframes ig-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-.ingest-card .ig-head {
-  padding: 10px 14px; background: var(--accent-soft);
-  border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600;
+@keyframes ig-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.97); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
-.ingest-card .ig-body { display: flex; gap: 12px; padding: 12px 14px; }
+.ingest-card .ig-head {
+  padding: 11px 16px; background: var(--accent-soft);
+  border-bottom: 1px solid var(--border); font-size: 13.5px; font-weight: 600;
+}
+.ingest-card .ig-body { display: flex; gap: 14px; padding: 14px 16px; }
 .ingest-card .ig-preview {
-  width: 150px; height: 120px; flex: none; border-radius: 8px; overflow: hidden;
+  width: 170px; height: 140px; flex: none; border-radius: 8px; overflow: hidden;
   background: #0f1115; display: flex; align-items: center; justify-content: center;
 }
 .ingest-card .ig-preview img,
@@ -697,19 +704,21 @@ body.dragging { cursor: grabbing; }
 .ingest-card .ig-fields { flex: 1; min-width: 0; }
 .ingest-card .ig-name { display: flex; align-items: stretch; gap: 0; }
 .ingest-card .ig-name input {
-  flex: 1; min-width: 0; padding: 6px 9px; font-size: 13px; color: var(--text);
+  flex: 1; min-width: 0; padding: 7px 10px; font-size: 13.5px; color: var(--text);
   background: #0f1115; border: 1px solid var(--border);
   border-radius: 7px 0 0 7px; border-right: none;
 }
+.ingest-card .ig-name input:focus { outline: none; border-color: var(--accent); }
 .ingest-card .ig-ext {
-  padding: 6px 9px; font-size: 12.5px; color: #9fb0c8; background: #232b38;
+  padding: 7px 10px; font-size: 12.5px; color: #9fb0c8; background: #232b38;
   border: 1px solid var(--border); border-radius: 0 7px 7px 0; white-space: nowrap;
 }
 .ingest-card .ig-meta {
   margin: 6px 0 10px; font-size: 11.5px; color: var(--text-faint);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.ingest-card .ig-tip { margin-top: 6px; font-size: 11.5px; color: var(--text-faint); }
 .ingest-card .ig-more { margin-top: 6px; font-size: 11.5px; color: var(--text-faint); }
-.ingest-card .ig-actions { display: flex; gap: 8px; margin-top: 12px; }
+.ingest-card .ig-actions { display: flex; gap: 8px; margin-top: 14px; }
 .ingest-card .ig-actions .btn { padding: 6px 12px; font-size: 12px; }
 .ingest-card .ig-actions #igOk { margin-left: auto; }
