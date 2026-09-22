@@ -1902,7 +1902,28 @@ async function openIngestCard(item) {
     && (t.path || '') === (prefer.path || '')
     && (prefer.gid ? t.gid === prefer.gid : t.kind !== 'vgroup'));
   if (sel < 0) sel = 0;
-  const opts = targets.map((t, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${esc(t.label)}</option>`).join('');
+
+  // 目标列表：按根目录分组、组内用全角空格缩进做出层级；⭐ 最近常用的顶到最前面
+  const idxOf = new Map(targets.map((t, i) => [t, i]));
+  const optHtml = (t) => {
+    const i = idxOf.get(t);
+    const pad = '\u3000'.repeat(Math.max(0, (t.depth || 1) - 1));
+    const times = t.uses > 1 ? `（用过 ${t.uses} 次）` : '';
+    return `<option value="${i}">${pad}${esc(t.shortLabel || t.label || '')}${times}</option>`;
+  };
+  const recent = targets.filter((t) => t.recent).sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
+  const byRoot = new Map();
+  targets.forEach((t) => {
+    if (!byRoot.has(t.root)) byRoot.set(t.root, []);
+    byRoot.get(t.root).push(t);
+  });
+  let opts = '';
+  if (recent.length) {
+    opts += `<optgroup label="⭐ 最近常用">${recent.map(optHtml).join('')}</optgroup>`;
+  }
+  for (const [, list] of byRoot) {
+    opts += `<optgroup label="${esc(list[0].rootName || '根目录')}">${list.map(optHtml).join('')}</optgroup>`;
+  }
 
   const ext = (item.ext || '').toLowerCase();
   const isImg = ['.png', '.jpg', '.jpeg', '.jfif', '.gif', '.webp', '.bmp', '.avif'].includes(ext);
@@ -1927,7 +1948,7 @@ async function openIngestCard(item) {
         <div class="ig-meta">原名 ${esc(item.name)} · ${fmtSize(item.size)} · 来自「${esc(item.rootName || '')}」</div>
         <label>进入哪里</label>
         <select id="igTarget">${opts}</select>
-        <div class="ig-tip">不改名就直接入库到上面选的位置；改了就按新名字入</div>
+        <div class="ig-tip">不改名就直接入库到上面选的位置；⭐ 最近常用 = 你入库过两次以上的地方（最近 10 次没用它就会消失）</div>
         ${inboxQueue.length ? `<div class="ig-more">还有 ${inboxQueue.length} 个新文件在排队</div>` : ''}
         <div class="ig-actions">
           <button class="btn" id="igSkip">跳过（留在原处）</button>
@@ -1941,6 +1962,10 @@ async function openIngestCard(item) {
   mask.className = 'ig-mask';
   document.body.appendChild(mask);
   document.body.appendChild(card);
+  {   // 选中"这次拖到的文件夹"（value 是 index，DOM 插好才能赋值）
+    const selEl = $('#igTarget');
+    if (selEl) selEl.value = String(sel);
+  }
 
   const close = () => { card.remove(); mask.remove(); inboxCurrent = null; setTimeout(showNextIngest, 220); };
   const skipOne = (x) => apiPost('/api/inbox/ingest', { id: x.id, action: 'skip' }).catch(() => { });
