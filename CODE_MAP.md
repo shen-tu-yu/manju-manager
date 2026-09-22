@@ -14,7 +14,7 @@
 |---|---|---|---|
 | `server.js` | 1768 | HTTP 服务、路由分发、文件系统 IO、外部命令、收件箱监听 | 业务规则、界面文案 |
 | `db.js` | 152 | SQLite 存取（Node 内置 `node:sqlite`） | HTTP 概念、路径安全 |
-| `public/app.js` | 2958 | 界面逻辑 | 直接拼 API URL（**待改，41 处**） |
+| `public/app.js` | 3003 | 界面逻辑 | 直接拼 API URL（**待改，41 处**） |
 | `public/index.html` | 147 | DOM 骨架 | 逻辑 |
 | `public/style.css` | 725 | 样式 | — |
 | `public/tools/` | — | 投放素材助手：油猴脚本 + 安装页 + 探针页 | — |
@@ -135,7 +135,7 @@
 |---|---|
 | 底部按钮 | 1158 |
 | 右键菜单 | 2395 |
-| `Ctrl+C` | 2913 |
+| `Ctrl+C` | 2958 |
 | **唯一实现** `copyToClipboard()` | **2508** |
 | 网页内部复制 `S.internalClip` | **和上面毫无关系** |
 
@@ -148,20 +148,21 @@
 | `showNextIngest()` —— 一次只弹一张 | 1880 |
 | **`openIngestCard(item)`** —— 卡片本体：预览 + **主名/后缀分离** + 目标选择 + **居中 + 遮罩** | **1887** |
 | `openSettings()` —— Edge 同步**只读展示** + 策略 + 监听开关 | 2085 |
-| `isFileDrag(ev)` —— 判"是不是从系统拖进来的文件" | 2567 |
-| `bindDragDropEvents()` —— **dragover/drop 必须 preventDefault**，见踩坑 ⑦ | 2747 |
+| `isFileDrag(ev)` —— dataTransfer 里有没有**真实文件** | 2566 |
+| **`dragKind(ev)`** —— **拖拽判据的唯一出口**：`internal` / `external` / `other` | **2583** |
+| `bindDragDropEvents()` —— **dragover/drop 必须 preventDefault**，见踩坑 ⑦ | 2762 |
 
 ### 事件绑定（已拆分，**不要再加链式调用**）
 | 函数 | 行 | 行数 |
 |---|---|---|
-| `bindEvents()` | 2579 | **只负责调用 7 个子函数** |
-| `bindToolbarEvents()` | 2590 | 28 |
-| `bindLogEvents()` | 2618 | 25 |
-| `bindNavEvents()` | 2643 | 25 |
-| `bindContentEvents()` | 2668 | 51 |
-| `bindOverlayEvents()` | 2719 | 28 |
-| `bindDragDropEvents()` | 2747 | 112 |
-| `bindKeyboardEvents()` | 2859 | 77 |
+| `bindEvents()` | 2594 | **只负责调用 7 个子函数** |
+| `bindToolbarEvents()` | 2605 | 28 |
+| `bindLogEvents()` | 2633 | 25 |
+| `bindNavEvents()` | 2658 | 25 |
+| `bindContentEvents()` | 2683 | 51 |
+| `bindOverlayEvents()` | 2734 | 28 |
+| `bindDragDropEvents()` | 2762 | 142 |
+| `bindKeyboardEvents()` | 2904 | 77 |
 
 ### 其它
 | 功能 | 行 |
@@ -176,7 +177,7 @@
 | 添加根目录 `openAddRootDialog()` | 1981 |
 | 回收站 `openTrash()` / `renderTrash()` | 1033 / 1045 |
 | 灯箱 `openEntry` / `openLightbox` | 1219 / 1228 |
-| 启动 `init()`（末尾调 `connectInbox()`） | 2936 |
+| 启动 `init()`（末尾调 `connectInbox()`） | 2981 |
 
 ---
 
@@ -240,15 +241,30 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 
 `markSelfWrite` 做两件事（双保险）：写忽略表（60 秒）+ 直接塞进该根的快照集合。
 
-### ⑦ 从资源管理器拖文件进页面，`dragover`/`drop` **必须** `preventDefault()`
+### ⑦ 页面上有三种拖拽，判据必须收敛到 `dragKind()`；`dragover`/`drop` 必须 `preventDefault()`
 
-只在 `drop` 里处理是不够的：外部文件拖入时 `S.dragPaths` 为空，
-`dragover` 若不 `preventDefault()`，浏览器判定"页面不是放置目标" →
-**drop 事件根本不派发**，浏览器直接开新标签页打开那个文件（页面被截胡，上传永远收不到）。
+页面上同时跑着三种拖拽，**判据不许散在各个 handler 里**（散开就会串：上传污染移动、移动污染上传）：
 
-正确写法（`bindDragDropEvents` 2747）：`dragover` 里用 `isFileDrag(ev)` 判断是否含 `Files`
-类型并 `preventDefault()`；`drop` 里**开头无条件** `preventDefault()`。
-（拖到浏览器标签栏/书签栏上仍会打开文件 —— 那是浏览器自己的区域，网页无权拦。）
+| 类型 | 判据 | 处理 |
+|---|---|---|
+| `internal` 网页内部拖拽（素材 → 目录树）= 移动 | `S.dragPaths` 非空（`dragstart` 2758 自己设的），**永远优先** | `moveItems` / `assignToGroup` / `unassignFiles` |
+| `external` 从资源管理器拖进来的真实文件 = 上传 | `dataTransfer.types` 含 `'Files'` | `uploadFiles()` |
+| `other` 从别的网页拖来的元素/链接/文字 | 两个都不满足 | **有意什么都不做** |
+
+判据只有一处：`dragKind(ev)`（**2583**），三个 handler 都调它。
+内部拖拽只 `setData('text/plain')`，`types` 里**不含** `Files` —— 两条判据天然正交，且内部优先短路。
+
+**两个必须记住的坑：**
+
+1. **`dragover` 不 `preventDefault()` 就没有 `drop`**：外部文件拖入时浏览器判定"页面不是放置目标"，
+   松手时直接开新标签页打开文件（页面被截胡，上传永远收不到）。所以 `dragover` 里对 `external`
+   要 `preventDefault()` + `dropEffect='copy'`，`drop` 里**开头无条件** `preventDefault()`。
+   （拖到浏览器标签栏/书签栏上仍会打开文件 —— 那是浏览器自己的区域，网页无权拦。）
+
+2. **`dragleave` 不能用 `dragKind(ev)` 判**：Chrome 在 `dragleave` 时 `dataTransfer.types` **是空数组**，
+   会判成 `'other'` —— 据此 `return` 的话遮罩永远收不掉。
+   正确做法：看 `dragActive` 标志（`dragenter`/`dragover` 置位、`drop`/`dragend` 清），
+   并且 `document` 的 `dragend` 里兜底重置（拖拽被 Esc 取消时不触发 `dragleave`）。
 
 ### ⑧ "拖进网页"和"后台发现"是两个入口，但只能有一份策略
 
@@ -279,7 +295,9 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 | 上传一次弹了两张卡 | `dispatchNewFile` 822 只该被调一次；`markSelfWrite` 必须在上传分支里调（否则 watcher 再当一次新文件） |
 | 网页自己的操作也弹卡片 | 那个写接口漏了 `markSelfWrite()`，见踩坑 ⑥ |
 | 卡片弹了但入库没反应 | `/api/inbox/ingest` 1050；目标根目录是否还在（`getRoot` 280） |
-| 拖文件进来变成打开新标签页 | **踩坑 ⑦**，看 `bindDragDropEvents` 2747 的 `dragover` |
+| 拖文件进来变成打开新标签页 | **踩坑 ⑦**，看 `bindDragDropEvents` 2762 的 `dragover` |
+| 内部拖素材却触发了上传（或反之） | `dragKind()` 2583 —— 判据只该有这一处；看有没有 handler 自己判 `S.dragPaths` / `types` |
+| 拖拽遮罩（dropMask）卡住不收 | **踩坑 ⑦-2**：`dragleave` 不能用 `dragKind` 判；`dragActive`/`dragDepth` 要对成对 |
 | 改完 Edge 下载目录但网页没变 | 网页每次打开设置都重读 `readEdgePrefs()` 635，点「重新读取 Edge 设置」；Edge 开着"下载前询问"时手选的位置不可知 |
 
 ---
