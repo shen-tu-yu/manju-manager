@@ -1819,6 +1819,7 @@ async function uploadFiles(files) {
     files.map((f) => '  · ' + f.name).join('\n') + (failed ? `\n  ⚠ ${failed} 个失败` : ''));
   toast(`上传完成：成功 ${done} 个${failed ? `，失败 ${failed} 个` : ''}`, failed ? 'warn' : 'ok');
   await refresh();
+  flushHeldInbox();     // 这批都传完了，现在开始问「进哪个库」
 }
 
 function uploadOne(file) {
@@ -1843,6 +1844,7 @@ function uploadOne(file) {
 
 let inboxQueue = [];
 let inboxCurrent = null;
+let inboxHeld = [];      // 一批上传还没走完时先攒着，等这批全部落定再一起问
 
 /** 接上后端的 SSE：新文件到达主动推过来，前端不轮询 */
 function connectInbox() {
@@ -1859,10 +1861,19 @@ function connectInbox() {
 function enqueueInbox(item) {
   if (!item || !item.id) return;
   if (inboxCurrent && inboxCurrent.id === item.id) return;
-  if (inboxQueue.some((x) => x.id === item.id)) return;
+  if (inboxQueue.some((x) => x.id === item.id) || inboxHeld.some((x) => x.id === item.id)) return;
+  if (uploading) { inboxHeld.push(item); return; }   // 拖进来一批还没传完，先攒着
   inboxQueue.push(item);
   Log.add('📥', `新文件「${item.name}」等待入库`, `${item.rootName || ''}\n  ${item.reason || ''}`);
   showNextIngest();
+}
+
+/** 一批上传全部落定后再开始弹卡片，避免传到一半就跳出来 */
+function flushHeldInbox() {
+  setTimeout(() => {
+    const held = inboxHeld.splice(0);
+    for (const it of held) enqueueInbox(it);
+  }, 300);
 }
 
 /** 一次只弹一张卡片，处理完自动弹下一张 */
@@ -1885,9 +1896,11 @@ async function openIngestCard(item) {
     return showNextIngest();
   }
 
-  const last = data.lastTarget || {};
-  const same = (t) => last.root === t.root && (last.gid || '') === (t.gid || '') && (last.path || '') === (t.path || '');
-  let sel = targets.findIndex((t) => same(t) && (t.kind === 'vgroup' ? !!last.gid : !last.gid));
+  // 默认选中：这次上传的落点优先（拖到哪就问哪），其次上次入库的位置
+  const prefer = item.target || data.lastTarget || {};
+  let sel = targets.findIndex((t) => t.root === prefer.root
+    && (t.path || '') === (prefer.path || '')
+    && (prefer.gid ? t.gid === prefer.gid : t.kind !== 'vgroup'));
   if (sel < 0) sel = 0;
   const opts = targets.map((t, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${esc(t.label)}</option>`).join('');
 
@@ -1903,7 +1916,7 @@ async function openIngestCard(item) {
   card.id = 'ingestCard';
   card.className = 'ingest-card';
   card.innerHTML = `
-    <div class="ig-head">📥 新文件到了 —— 决定它进哪个库</div>
+    <div class="ig-head">📥 ${item.origin === 'upload' ? '刚上传 —— 它进哪个库？' : '新文件到了 —— 决定它进哪个库'}</div>
     <div class="ig-body">
       <div class="ig-preview">${preview}</div>
       <div class="ig-fields">
@@ -1914,6 +1927,7 @@ async function openIngestCard(item) {
         <div class="ig-meta">原名 ${esc(item.name)} · ${fmtSize(item.size)} · 来自「${esc(item.rootName || '')}」</div>
         <label>进入哪里</label>
         <select id="igTarget">${opts}</select>
+        <div class="ig-tip">不改名就直接入库到上面选的位置；改了就按新名字入</div>
         ${inboxQueue.length ? `<div class="ig-more">还有 ${inboxQueue.length} 个新文件在排队</div>` : ''}
         <div class="ig-actions">
           <button class="btn" id="igSkip">跳过（留在原处）</button>
@@ -1922,9 +1936,13 @@ async function openIngestCard(item) {
         </div>
       </div>
     </div>`;
+  const mask = document.createElement('div');
+  mask.id = 'ingestMask';
+  mask.className = 'ig-mask';
+  document.body.appendChild(mask);
   document.body.appendChild(card);
 
-  const close = () => { card.remove(); inboxCurrent = null; setTimeout(showNextIngest, 220); };
+  const close = () => { card.remove(); mask.remove(); inboxCurrent = null; setTimeout(showNextIngest, 220); };
   const skipOne = (x) => apiPost('/api/inbox/ingest', { id: x.id, action: 'skip' }).catch(() => { });
 
   $('#igOk').onclick = async () => {

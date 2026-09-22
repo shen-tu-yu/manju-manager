@@ -812,6 +812,37 @@ async function autoIngestQuiet(root, name) {
   }
 }
 
+/**
+ * 新文件的**唯一分派出口** —— 后台监听（watcher）和"拖进网页上传"都走这里，
+ * 免得两个入口各写一套策略、改一处漏一处。
+ *
+ * origin='watch'  后台发现的新文件：策略 never / smart 判为"有意义" → 静默入库到上次落点
+ * origin='upload' 用户刚拖进来的：策略 never / smart 判为"有意义" → 就留在上传的位置，不打扰
+ */
+function dispatchNewFile(root, name, st, opts) {
+  const o = opts || {};
+  const policy = config.autoPolicy;
+  const rule = matchSmartRule(name);
+  const fromUpload = o.origin === 'upload';
+
+  if (policy === 'never' || (policy === 'smart' && !rule)) {
+    if (fromUpload) {
+      LOG(`[收件箱] 上传 ${name}：按「${policy === 'never' ? '全自动' : '智能'}」策略不打扰，留在上传位置`);
+      return;
+    }
+    autoIngestQuiet(root, name).then((r) => {
+      LOG(`[收件箱] 静默入库 ${name}${r ? ' -> ' + r.path : '（未设置落点，留在原处）'}`);
+      sseSend('inbox-done', { name, to: r ? r.path : '', action: 'auto' });
+    }).catch(() => { });
+    return;
+  }
+
+  const reason = fromUpload ? '刚上传'
+    : policy === 'smart' ? `文件名无意义（${rule}）` : '总是询问';
+  queueInboxItem(root, name, st,
+    Object.assign({ reason, origin: o.origin || 'watch' }, o.target ? { target: o.target } : {}));
+}
+
 /** 扫一个根目录的顶层，找出"新增的文件"并按策略分派 */
 async function scanRoot(root) {
   const known = inboxKnown.get(root.id) || new Set();
@@ -835,15 +866,7 @@ async function scanRoot(root) {
       setTimeout(() => { scanRoot(root).catch(() => { }); }, 4000);
       continue;
     }
-    const rule = matchSmartRule(name);
-    const policy = config.autoPolicy;
-    if (policy === 'never' || (policy === 'smart' && !rule)) {
-      const r = await autoIngestQuiet(root, name);
-      LOG(`[收件箱] 静默入库 ${name}${r ? ' -> ' + r.path : '（未设置落点，留在原处）'}`);
-      sseSend('inbox-done', { name, to: r ? r.path : '', action: 'auto' });
-      continue;
-    }
-    queueInboxItem(root, name, st, { reason: policy === 'smart' ? `文件名无意义（${rule}）` : '总是询问' });
+    dispatchNewFile(root, name, st, { origin: 'watch' });   // 策略只有一份，见 dispatchNewFile
   }
 }
 
@@ -1198,8 +1221,15 @@ const server = http.createServer(async (req, res) => {
         req.pipe(ws);
       });
       const st2 = await fsp.stat(target);
-      markSelfWrite(target);          // 自己传的，别让收件箱再弹一次
-      return sendJSON(res, 200, { ok: true, name: path.basename(target), size: st2.size });
+      const finalName = path.basename(target);
+      markSelfWrite(target);          // 登记忽略：别让 watcher 把这次上传再当成"新下载"弹第二遍
+      // 但上传本身的"进哪个库 + 改名"要问 —— 默认落点就是用户刚才拖进来的这个文件夹
+      const relDir = toRel(root.path, dirAbs);
+      dispatchNewFile(root, finalName, st2, {
+        origin: 'upload',
+        target: { kind: relDir ? 'dir' : 'root', root: root.id, path: relDir, gid: '' },
+      });
+      return sendJSON(res, 200, { ok: true, name: finalName, size: st2.size });
     }
 
     // ============================ 新建文件夹 ============================
