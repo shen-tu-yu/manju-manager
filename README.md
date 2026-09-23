@@ -279,6 +279,7 @@ D:\文件管理\
 ├── map.js             生成行号索引（node map.js）
 ├── CODE_MAP.md        代码地图：职责 / 规则 / 踩坑 —— 改代码前先看它
 ├── CODE_MAP.index.md  行号索引（map.js 自动生成，别手改）
+├── CHANGELOG.md       更新日志：改了什么，面向使用者
 └── README.md          使用说明（就是这份）
 ```
 
