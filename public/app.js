@@ -2198,6 +2198,7 @@ async function openSettings() {
 
 const DELIVER_TARGETS = [
   { id: 'doubao', icon: '🫘', name: '豆包', url: 'https://www.doubao.com/chat/' },
+  { id: 'pavo', icon: '🎬', name: 'Pavo', url: 'https://app.pavo-ai.work/' },
 ];
 
 /** 点左侧栏按钮 → 弹出平台菜单 */
@@ -2239,9 +2240,10 @@ function checkMjaInstalled() {
   });
 }
 
-function dvStatusHTML(ok) {
+function dvStatusHTML(ok, siteName) {
+  const n = siteName || '目标站';
   return ok
-    ? '<b>✅ 已经装好了</b><span>直接打开豆包就能用：右上角会出现蓝色「📁 素材」</span>'
+    ? `<b>✅ 已经装好了</b><span>直接打开${esc(n)}就能用：右上角会出现蓝色「📁 素材」</span>`
     : '<b>⚠️ 还没装好</b><span>照下面 4 步做一遍，大约 2 分钟</span>';
 }
 
@@ -2276,8 +2278,9 @@ async function openDeliverPanel(t) {
 
     <div style="margin-top:18px;font-size:12px;color:var(--text-faint);line-height:1.8">
       <b style="color:var(--text-dim)">装好之后怎么用：</b><br>
-      打开豆包 → 页面<b>右上角</b>点蓝色「📁 素材」→ 侧边栏滑出 → <b>点一下素材</b>，文件就进豆包输入框了。<br>
-      侧边栏<b>左边缘可以拖动调宽</b>，素材是缩略图，看画面就知道是什么。
+      打开${esc(t.name)} → 页面<b>右上角</b>点蓝色「📁 素材」→ 侧边栏滑出 → <b>点一下素材</b>，文件就进${esc(t.name)}的输入框了。<br>
+      面板<b>抓标题栏可拖到任意位置</b>、<b>左边缘拖宽度</b>、标题栏 <b>－ / ＋</b> 调预览图大小、<b>⌂</b> 复位；位置和大小会记住。<br>
+      素材是缩略图，看画面就知道是什么。
     </div>
 
     <div class="modal-actions">
@@ -2290,7 +2293,7 @@ async function openDeliverPanel(t) {
   const box = $('#dvStatus');
   const setStatus = (ok, checking) => {
     box.className = 'dv-status' + (checking ? '' : ok ? ' ok' : ' no');
-    box.innerHTML = checking ? '<b>正在检测…</b><span>稍等一秒</span>' : dvStatusHTML(ok);
+    box.innerHTML = checking ? '<b>正在检测…</b><span>稍等一秒</span>' : dvStatusHTML(ok, t.name);
   };
 
   setStatus(false, true);
@@ -2422,7 +2425,7 @@ function showCtxMenu(x, y, entry) {
         toast('已添加为根目录：' + r.root.name, 'ok');
       } catch (e) { toast(e.message, 'err'); }
     } });
-    items.push({ label: '📋 复制到剪贴板（去豆包 Ctrl+V）', fn: copyToClipboard });
+    items.push({ label: '📋 复制到剪贴板（去豆包 / Pavo Ctrl+V）', fn: copyToClipboard });
     items.push({ label: '🖥 在资源管理器中显示', fn: () => revealInExplorer(entry.path) });
     items.push({ sep: true });
     items.push({ label: '🗑 删除', k: 'Delete', danger: true, fn: deleteSelected });
@@ -2540,7 +2543,7 @@ async function copyToClipboard() {
   try {
     const r = await apiPost('/api/clipboard', selectionBody());
     Log.add('📋', `复制 ${r.count} 个文件到系统剪贴板`, (r.paths || []).join('\n'));
-    toast(`已复制 ${r.count} 个文件 —— 切到豆包按 Ctrl+V 试试`, 'ok', 4600);
+    toast(`已复制 ${r.count} 个文件 —— 切到豆包或 Pavo 按 Ctrl+V 试试`, 'ok', 4600);
   } catch (e) { toast(e.message, 'err'); }
 }
 

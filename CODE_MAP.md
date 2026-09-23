@@ -163,6 +163,26 @@
 
 判据**只有一处** `dragKind(ev)`，三个 handler 都调它。详见踩坑 ⑦。
 
+### 3.8 投放素材助手（把素材丢进豆包 / Pavo）
+
+- 平台表：app.js 顶部的 `DELIVER_TARGETS` —— **加平台就往这张表加一行**
+- 面板 `openDeliverPanel(t)` 的文案全部走 `t.name`；安装 4 步与平台无关
+- 安装检测：`checkMjaInstalled()` 用隐藏 iframe 加载 `/tools/probe.html`，读它的
+  `documentElement.dataset.mjaReady`（脚本在**本地页面**会挂这个标记）—— 与目标平台无关
+- 网页「📋 复制脚本代码」取的是 `/tools/doubao-helper.js`（**不是** `.user.js`）
+- **脚本有三份，改一份必须同步另外两份**（见踩坑 ⑨）：
+
+| 文件 | 谁用 | 关系 |
+|---|---|---|
+| `public/tools/doubao-helper.user.js` | **主脚本**（篡改猴安装用） | 带 UserScript 头 |
+| `public/tools/doubao-helper.js` | 网页「复制脚本代码」 | 与主脚本**逐字节相同** |
+| `extension/content.js` | Edge 扩展内容脚本 | 主脚本**去掉 UserScript 头** |
+
+- 脚本里的平台表是 `SITES`（`{ id, name, re }`）。发送逻辑**平台无关**：运行时扫 `input[type=file]`
+  → 按 `accept` 匹配 → `DataTransfer` 注入 → 失败退回模拟拖放。所以适配新站通常**不用改发送代码**。
+- **加一个新平台 = 四处改动**：`SITES`、UserScript `@match`、`extension/manifest.json` 的 `matches`、
+  app.js 的 `DELIVER_TARGETS`。面板标题会显示当前站点（`📁 漫剧素材 · Pavo`），方便确认脚本在哪个站生效。
+
 ---
 
 ## 四、⚠️ 踩坑记录（真实发生过的，别再犯）
@@ -241,6 +261,24 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 结果"从资源管理器拖进网页"这条入口被彻底屏蔽，永远不弹卡片。
 正确顺序：`markSelfWrite(target)` **之后**仍然要调 `dispatchNewFile(..., origin:'upload')`。
 
+### ⑨ 投放助手脚本有**三份**，改一份必须同步另外两份
+
+主脚本 `doubao-helper.user.js` 改完，**另外两份必须一起更新**：
+
+- `public/tools/doubao-helper.js` —— 网页「📋 复制脚本代码」取的就是这份，要与主脚本**逐字节相同**
+- `extension/content.js` —— 主脚本**去掉 UserScript 头**（`==/UserScript==` 之后的部分）
+
+只改一份的后果：篡改猴用户拿到新功能、扩展用户还是旧的（或反过来），而且两边行为不一致，排查时会怀疑人生。
+
+同步就用一个几行的临时脚本（读主脚本 → 原样写第一份 → 去头写第二份 → `node --check` 三个），
+**不要用 `node -e` 拼长命令**：PowerShell 会把单引号里的双引号吃掉（见踩坑 ②）。
+
+改完还要提醒用户（否则他会以为没生效，见踩坑 ⑤）：
+
+- 篡改猴：重新走一遍「复制脚本代码 → 编辑 → `Ctrl+A` 覆盖粘贴 → `Ctrl+S`」
+- Edge 扩展：`edge://extensions/` → **重新加载**
+- 然后**刷新目标站点页面**（脚本只在页面加载时注入一次）
+
 ---
 
 ## 五、常见故障定位表
@@ -316,6 +354,7 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 | **收件箱**（2026-09-22） | Edge 下载设置同步 + `fs.watch` 三档策略 + 入库卡片（层级目标 + 改名后缀保护 + 最近常用 + 自产不弹） |
 | **拖拽隔离**（2026-09-22） | 三种拖拽判据收敛到 `dragKind()`；外部文件拖入不再被浏览器截胡 |
 | **文档自动化**（2026-09-22） | 行号索引改由 `map.js` 生成，手写文档不再含行号 |
+| **多平台投放**（2026-09-22） | 投放素材助手支持**豆包 + Pavo**；加平台 = `SITES` + `@match` + `matches` + `DELIVER_TARGETS` 各一行 |
 
 ### ⏳ 未完成（风险较高，需单独一轮）
 

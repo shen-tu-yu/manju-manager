@@ -1,4 +1,4 @@
-/* 漫剧素材助手 · 豆包 —— Edge 扩展内容脚本 */
+/* 投放素材助手 —— 篡改猴脚本 / Edge 扩展内容脚本（同一份代码，改完要同步另外两份） */
 'use strict';
 
 (function () {
@@ -7,8 +7,17 @@
   const FM = 'http://127.0.0.1:8899';
   const MAX_BYTES = 200 * 1024 * 1024;
 
-  // 在豆包页面 = 干活；在本地素材管理页面 = 只挂一个「已安装」标记，供页面自动检测
-  const IS_DOUBAO = /(^|\.)doubao\.com$/i.test(location.hostname);
+  // 受支持的投放平台：脚本在哪个站点注入，就"投放到"哪个站点。
+  // 加新平台 = 这里加一行 + 在 @match 与 manifest.json 的 matches 里加上域名。
+  const SITES = [
+    { id: 'doubao', name: '豆包', re: /(^|\.)doubao\.com$/i },
+    { id: 'pavo', name: 'Pavo', re: /(^|\.)pavo-ai\.work$/i },
+  ];
+  const SITE = SITES.find((s) => s.re.test(location.hostname)) || null;
+  const SITE_NAME = SITE ? SITE.name : '目标站';
+
+  // 在投放平台页面 = 干活；在本地素材管理页面 = 只挂一个「已安装」标记，供页面自动检测
+  const IS_TARGET = !!SITE;
 
   const state = {
     open: false,
@@ -45,7 +54,7 @@
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
   }
 
-  /* ================= 把文件送进豆包 ================= */
+  /* ================= 把文件送进目标站点（豆包 / Pavo 通用） ================= */
 
   function findInputs() {
     return Array.from(document.querySelectorAll('input[type="file"]'));
@@ -104,7 +113,7 @@
     return fired > 0;
   }
 
-  function sendToDoubao(files) {
+  function sendFiles(files) {
     const list = Array.from(files);
     if (!list.length) return { ok: false, sent: 0 };
 
@@ -251,8 +260,8 @@
       const blob = await getBlob(`${FM}/api/file?root=${encodeURIComponent(state.rootId)}`
         + `&path=${encodeURIComponent(full)}`);
       const file = new File([blob], entry.name, { type: blob.type || 'application/octet-stream' });
-      const r = sendToDoubao([file]);
-      toast(r.ok ? `已送入豆包：${entry.name}` : '没能送进豆包，看侧边栏底部的诊断', r.ok);
+      const r = sendFiles([file]);
+      toast(r.ok ? `已送入${SITE_NAME}：${entry.name}` : `没能送进${SITE_NAME}，看侧边栏底部的诊断`, r.ok);
     } catch (e) {
       state.diag = '读取素材失败：' + e.message + '\n（确认 8899 服务在运行）';
       renderDiag();
@@ -327,7 +336,7 @@
 
   let panel, btn, bodyEl, diagEl;
 
-  /* ---- 界面记忆：位置 / 宽度 / 预览图大小，存本地，重开豆包还在原处 ---- */
+  /* ---- 界面记忆：位置 / 宽度 / 预览图大小，存本地，重开页面还在原处 ---- */
   const UI_KEY = 'mja-ui-v1';
   const ui = { left: null, top: 0, width: 520, thumb: 150 };
 
@@ -377,7 +386,7 @@
     panel.innerHTML = `
       <div id="mja-grip"></div>
       <div class="mja-head">
-        <b>📁 漫剧素材</b>
+        <b>📁 漫剧素材${SITE ? ' · ' + SITE.name : ''}</b>
         <span class="mja-sp"></span>
         <button class="mja-mini" id="mja-smaller" title="预览图变小">－</button>
         <button class="mja-mini" id="mja-bigger" title="预览图变大">＋</button>
@@ -385,7 +394,7 @@
         <button class="mja-mini" id="mja-refresh" title="重新读取素材库">刷新</button>
         <button class="mja-mini" id="mja-close" title="收起面板">×</button>
       </div>
-      <div class="mja-drop" id="mja-drop">把文件拖到这里<br><span style="opacity:.75">松手即送入豆包</span></div>
+      <div class="mja-drop" id="mja-drop">把文件拖到这里<br><span style="opacity:.75">松手即送入${SITE_NAME}</span></div>
       <div class="mja-body" id="mja-body"></div>
       <div class="mja-diag" id="mja-diag"></div>
     `;
@@ -418,8 +427,8 @@
       drop.classList.remove('hot');
       const files = Array.from(e.dataTransfer.files || []);
       if (!files.length) return;
-      const r = sendToDoubao(files);
-      toast(r.ok ? `已送入豆包 ${r.sent} 个文件` : '没能送进豆包，看底部诊断', r.ok);
+      const r = sendFiles(files);
+      toast(r.ok ? `已送入${SITE_NAME} ${r.sent} 个文件` : '没能送进去，看底部诊断', r.ok);
     });
 
     panel.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); });
@@ -427,7 +436,7 @@
 
     // 拖动：抓标题栏移动整块面板，抓左边缘调宽度。
     // 用 Pointer Capture —— 指针划过页面里的 iframe 时事件仍归捕获元素，不会把拖动"甩掉"。
-    // 位置/宽度都记进 ui，重开豆包还在原处。
+    // 位置/宽度都记进 ui，重开页面还在原处。
     const head = panel.querySelector('.mja-head');
     const grip = panel.querySelector('#mja-grip');
     let mode = null, sx = 0, sy = 0, sl = 0, st0 = 0, fixedRight = 0;
@@ -581,7 +590,7 @@
   function boot() {
     if (document.getElementById('mja-panel')) return;
     if (!document.body) { setTimeout(boot, 300); return; }
-    if (!IS_DOUBAO) {
+    if (!IS_TARGET) {
       // 本地页面：挂个标记，「投放素材助手」面板靠它显示"已安装"
       document.documentElement.dataset.mjaReady = '1';
       log('已在本地页面挂上「已安装」标记');
