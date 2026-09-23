@@ -112,17 +112,48 @@
 `queueInboxItem` `ingestFile`（入库唯一实现）`autoIngestQuiet` `dispatchNewFile` `scanRoot`
 `stopInbox` / `startInbox` `ingestKey` `collectDirs` `listIngestTargets`。
 
-### 2.4 启动时打开哪个浏览器
+### 2.4 启动器与浏览器发现（**加启动选项看这里**）
 
-- **表：`BROWSERS`（server.js）** —— 加浏览器就往这张表加一行（`name` / `exe` / `win` 候选路径，
-  `%VAR%` 用环境变量展开）。**前端不用改**：网页设置的下拉是 `GET /api/browsers` 动态渲染的。
-- `findBrowser(id)`：按候选路径 + `PATH` 查找，找不到返回 `null`
-- `browserInfo()`：给 `GET /api/browsers` 用（当前选的是谁 + 每个检测到没有）
-- `openBrowser(url)`：`--open` 时调用。**指定的浏览器找不到就回退系统默认**并在控制台打印提示，
-  不会因为没装 Chrome 就打不开页面。
-- 四个入口：`启动.bat`（系统默认）/ `启动-Chrome.bat`（`--open --browser=chrome`）/
-  网页设置（写 `config.browser`，**下次启动生效**）/ 命令行 `--browser=chrome`
-- 配置项：`browser`（`default` \| `chrome`），存 settings 表；POST `/api/config` 里对非法值有白名单校验
+**两个新文件，职责分得很清：**
+
+| 文件 | 职责 |
+|---|---|
+| `launcher.js` | 启动器：菜单 UI + 记住选择（`launcher.json`）+ 拼参数拉起 `server.js` |
+| `browsers.js` | 发现本机浏览器（`discover()` / `resolve()`），**不写死任何安装路径** |
+
+**★ 加一个新的启动选项 = 只改 `launcher.js` 顶部的 `OPTIONS` 表一条**（菜单、记忆、参数拼装、
+"手动输入"入口、`r` 恢复默认**全自动适配**，别处都不用动）：
+
+| 字段 | 作用 |
+|---|---|
+| `key` | 存进 `launcher.json` 的字段名，也是命令行直通用的名字 |
+| `title` | 菜单上显示的名字 |
+| `def` | 没选过时的默认值 |
+| `type` | `'list'`（给几个选项）\| `'text'`（自由文本） |
+| `choices` | `() => [{ value, label, note }]`，**可以动态生成**（浏览器那项就是扫注册表） |
+| `args` | 值 → 传给 `server.js` 的参数数组，例 `(v) => ['--port=' + v]` |
+| `custom` | 有这行就多一个「手动输入」入口，字符串是提示语 |
+
+后端要支持新参数：在 `server.js` 的 `applyArgv()` 里加一行认它。现在已经认
+`--port[=]` `--host[=]` `--browser[=]` `--browser-exe[=]` `--root`。
+
+**浏览器发现（browsers.js）** —— 四个来源，逐个失败都不影响其它（全部 try 住）：
+
+1. 注册表 `Clients\StartMenuInternet`（HKLM + HKCU）：Windows 官方登记浏览器的地方，**装哪个盘都在**
+2. 注册表 `App Paths\<exe>`：安装程序登记的完整路径
+3. 常见安装路径（兜底绿色版 / 注册表被清理过）
+4. `PATH` 查找
+
+> ⚠️ ①② 要走 `reg.exe`（Node 没有内置注册表 API）。**若运行环境禁止起子进程，它们会静默失败**，
+> 自动退到 ③④ —— 功能不中断，只是列表短一些（本项目的 AI 沙箱就是这样，用户实机不受影响；
+> 实测沙箱里是 `EPERM spawnSync reg`）。
+> 中文 Windows 的 `reg` 输出是 **GBK**，要用 Buffer + `TextDecoder('gbk')` 解码，按 utf8 直接读会乱码。
+
+**打开浏览器（`openBrowser()`）**：`config.browser` 存 **exe 绝对路径**或 `'default'`；
+配置的那个找不到就**回退系统默认**并打印提示 —— 绝不会因为浏览器路径变了就打不开页面。
+
+**四个入口**：`启动.bat` → `launcher.js`（菜单）/ `node launcher.js key=value ...`（直通，给快捷方式用）/
+网页设置（写 `config.browser`，**下次启动生效**）/ `node server.js`（完全跳过启动器）。
 
 ---
 

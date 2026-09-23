@@ -11,11 +11,9 @@ echo   ============================================================
 echo     Manju Material Manager
 echo   ============================================================
 echo.
-echo     Browser will open automatically:
-echo         http://127.0.0.1:8899
-echo.
-echo     Want Google Chrome?  Double-click the "-Chrome.bat" file
-echo     (or set it once in the web UI: Settings - Browser).
+echo     A launcher menu shows up first:
+echo     pick the browser to open with (the choice is remembered,
+echo     next time just press Enter).
 echo.
 echo     KEEP THIS WINDOW OPEN.
 echo     Closing this window stops the service.
@@ -25,7 +23,7 @@ echo.
 echo   ============================================================
 echo.
 
-node server.js --open
+node launcher.js
 set EXITCODE=%errorlevel%
 
 echo.

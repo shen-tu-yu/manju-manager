@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/23 15:10:00
+> 生成时间：2026/9/23 15:20:22
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -10,9 +10,11 @@
 
 | 文件 | 行数 |
 |---|---|
-| `server.js` | 1889 |
+| `server.js` | 1856 |
 | `db.js` | 155 |
-| `public/app.js` | 3053 |
+| `launcher.js` | 236 |
+| `browsers.js` | 211 |
+| `public/app.js` | 3055 |
 | `public/index.html` | 147 |
 | `public/style.css` | 725 |
 
@@ -20,107 +22,105 @@
 
 | 行 | 方法 | 路由 |
 |---|---|---|
-| 1020 | GET | `/api/config` |
-| 1037 | POST | `/api/config` |
-| 1052 | GET | `/api/browsers` |
-| 1059 | GET | `/api/edge` |
-| 1076 | GET | `/api/events` |
-| 1090 | GET | `/api/inbox` |
-| 1099 | GET | `/api/inbox/targets` |
-| 1104 | POST | `/api/inbox/ingest` |
-| 1127 | POST | `/api/roots` |
-| 1143 | DELETE | `/api/roots/` |
-| 1154 | GET | `/api/fs/drives` |
-| 1158 | GET | `/api/fs/dirs` |
-| 1177 | GET | `/api/list` |
-| 1209 | GET | `/api/tree` |
-| 1231 | GET | `/api/file` |
-| 1237 | GET | `/api/text` |
-| 1251 | POST | `/api/text` |
-| 1261 | PUT | `/api/upload` |
-| 1290 | POST | `/api/mkdir` |
-| 1302 | POST | `/api/mkdir-template` |
-| 1319 | POST | `/api/rename` |
-| 1334 | POST | `/api/rename-batch` |
-| 1367 | POST | `/api/move` · `/api/copy` |
-| 1402 | POST | `/api/delete` |
-| 1422 | GET | `/api/trash` |
-| 1441 | POST | `/api/trash/restore` |
-| 1467 | POST | `/api/trash/purge` |
-| 1482 | GET | `/api/search` |
-| 1525 | GET | `/api/vgroups` |
-| 1530 | POST | `/api/vgroups` |
-| 1549 | POST | `/api/vgroups/update` |
-| 1561 | POST | `/api/vgroups/assign` |
-| 1579 | POST | `/api/vgroups/delete` |
-| 1593 | POST | `/api/vgroups/materialize` |
-| 1650 | GET | `/api/duplicates` |
-| 1669 | POST | `/api/clipboard` |
-| 1714 | POST | `/api/reveal` |
-| 1732 | GET | `/api/sysinfo` |
+| 1025 | GET | `/api/config` |
+| 1042 | POST | `/api/config` |
+| 1061 | GET | `/api/browsers` |
+| 1068 | GET | `/api/edge` |
+| 1085 | GET | `/api/events` |
+| 1099 | GET | `/api/inbox` |
+| 1108 | GET | `/api/inbox/targets` |
+| 1113 | POST | `/api/inbox/ingest` |
+| 1136 | POST | `/api/roots` |
+| 1152 | DELETE | `/api/roots/` |
+| 1163 | GET | `/api/fs/drives` |
+| 1167 | GET | `/api/fs/dirs` |
+| 1186 | GET | `/api/list` |
+| 1218 | GET | `/api/tree` |
+| 1240 | GET | `/api/file` |
+| 1246 | GET | `/api/text` |
+| 1260 | POST | `/api/text` |
+| 1270 | PUT | `/api/upload` |
+| 1299 | POST | `/api/mkdir` |
+| 1311 | POST | `/api/mkdir-template` |
+| 1328 | POST | `/api/rename` |
+| 1343 | POST | `/api/rename-batch` |
+| 1376 | POST | `/api/move` · `/api/copy` |
+| 1411 | POST | `/api/delete` |
+| 1431 | GET | `/api/trash` |
+| 1450 | POST | `/api/trash/restore` |
+| 1476 | POST | `/api/trash/purge` |
+| 1491 | GET | `/api/search` |
+| 1534 | GET | `/api/vgroups` |
+| 1539 | POST | `/api/vgroups` |
+| 1558 | POST | `/api/vgroups/update` |
+| 1570 | POST | `/api/vgroups/assign` |
+| 1588 | POST | `/api/vgroups/delete` |
+| 1602 | POST | `/api/vgroups/materialize` |
+| 1659 | GET | `/api/duplicates` |
+| 1678 | POST | `/api/clipboard` |
+| 1723 | POST | `/api/reveal` |
+| 1741 | GET | `/api/sysinfo` |
 
-## 三、后端函数 / 常量（58 个函数）
+## 三、后端函数 / 常量（56 个函数）
 
 | 行 | 名字 | 说明 |
 |---|---|---|
-| 54 | `extOf()` |  |
-| 56 | `kindOf()` |  |
-| 98 | `loadConfig()` |  |
-| 106 | `saveConfig()` |  |
-| 141 | `sendJSON()` |  |
-| 162 | `LOG()` |  |
-| 168 | `flushLog()` |  |
-| 195 | `psArgs()` | / |
-| 204 | `withClipboardLock()` |  |
-| 211 | `cleanPsOutput()` | PowerShell 走 stderr 时会吐 CLIXML（进度/错误都在里面），这里挑出人话 |
-| 223 | `runCommand()` |  |
-| 240 | `sendError()` |  |
-| 246 | `readJSONBody()` |  |
-| 266 | `resolveSafe()` | 把「相对于根的 POSIX 路径」解析成绝对路径，并保证不越界 |
-| 279 | `toRel()` | 绝对路径 -> 相对根的 POSIX 路径 |
-| 284 | `getRoot()` |  |
-| 290 | `uniqueName()` |  |
-| 304 | `assertValidName()` |  |
-| 313 | `listDrives()` |  |
-| 337 | `saveVGroupsFile()` |  |
-| 342 | `groupsOf()` |  |
-| 354 | `readGroupsClean()` | / |
-| 381 | `trashDirOf()` | ---------------------------------------------------------------- 回收站 |
-| 382 | `trashIndexPath()` |  |
-| 384 | `readTrashIndex()` |  |
-| 392 | `writeTrashIndex()` |  |
-| 398 | `moveToTrash()` | 删除（移动）到回收站 |
-| 421 | `serveStatic()` | ---------------------------------------------------------------- 静态文件 |
-| 442 | `streamFile()` | ---------------------------------------------------------------- 文件流（支持… |
-| 493 | `statEntry()` | ---------------------------------------------------------------- 目录列举 |
-| 515 | `hasSubDir()` | / |
-| 528 | `listDir()` |  |
-| 546 | `sortEntries()` | 服务端排序 —— 分页之后排序必须在这里做，否则只排当前页 |
-| 563 | `resolveScope()` | / |
-| 597 | `expandItems()` | 批量接口入参：给明确 items，或给 scope（= 全选当前视图的全部文件） |
-| 631 | `edgeUserDataDir()` |  |
-| 641 | `readEdgePrefs()` | / |
-| 678 | `markSelfWrite()` | 网页自己写入的文件：登记忽略，否则监听器会把自己的操作当成"新下载" |
-| 690 | `isSelfWrite()` |  |
-| 698 | `snapshotTop()` |  |
-| 707 | `sseSend()` |  |
-| 715 | `waitFileReady()` | 等文件写完：同级还有 .crdownload、或大小还在变，都不算下载完成 |
-| 729 | `matchSmartRule()` | 文件名"有没有意义"：命中设置里的 smartRules 正则就算没意义 |
-| 737 | `queueInboxItem()` |  |
-| 756 | `ingestFile()` | / |
-| 823 | `autoIngestQuiet()` | 「全自动：直接入库不打扰」/ smart 判定为"名字有意义"时走这里 |
-| 841 | `dispatchNewFile()` | / |
-| 866 | `scanRoot()` | 扫一个根目录的顶层，找出"新增的文件"并按策略分派 |
-| 892 | `stopInbox()` |  |
-| 901 | `startInbox()` | （重新）挂上所有根目录的监听。roots 变了、开关变了都要重来一遍 |
-| 927 | `ingestKey()` | 入库位置的唯一标识（虚拟分类靠 gid 区分，文件夹靠相对路径） |
-| 932 | `collectDirs()` | 递归列文件夹（DFS + 带层级 depth），最多 limit 个 |
-| 953 | `listIngestTargets()` | / |
-| 1794 | `expandEnv()` |  |
-| 1799 | `findBrowser()` | 找浏览器的可执行文件；找不到返回 null（调用方回退系统默认） |
-| 1819 | `browserInfo()` | 给网页设置面板用：当前选的是谁 + 每个检测到没有 |
-| 1829 | `openBrowser()` | 服务就绪后自动打开浏览器（启动.bat 传 --open 时启用） |
-| 1876 | `addRoot()` |  |
+| 55 | `extOf()` |  |
+| 57 | `kindOf()` |  |
+| 99 | `loadConfig()` |  |
+| 107 | `saveConfig()` |  |
+| 146 | `sendJSON()` |  |
+| 167 | `LOG()` |  |
+| 173 | `flushLog()` |  |
+| 200 | `psArgs()` | / |
+| 209 | `withClipboardLock()` |  |
+| 216 | `cleanPsOutput()` | PowerShell 走 stderr 时会吐 CLIXML（进度/错误都在里面），这里挑出人话 |
+| 228 | `runCommand()` |  |
+| 245 | `sendError()` |  |
+| 251 | `readJSONBody()` |  |
+| 271 | `resolveSafe()` | 把「相对于根的 POSIX 路径」解析成绝对路径，并保证不越界 |
+| 284 | `toRel()` | 绝对路径 -> 相对根的 POSIX 路径 |
+| 289 | `getRoot()` |  |
+| 295 | `uniqueName()` |  |
+| 309 | `assertValidName()` |  |
+| 318 | `listDrives()` |  |
+| 342 | `saveVGroupsFile()` |  |
+| 347 | `groupsOf()` |  |
+| 359 | `readGroupsClean()` | / |
+| 386 | `trashDirOf()` | ---------------------------------------------------------------- 回收站 |
+| 387 | `trashIndexPath()` |  |
+| 389 | `readTrashIndex()` |  |
+| 397 | `writeTrashIndex()` |  |
+| 403 | `moveToTrash()` | 删除（移动）到回收站 |
+| 426 | `serveStatic()` | ---------------------------------------------------------------- 静态文件 |
+| 447 | `streamFile()` | ---------------------------------------------------------------- 文件流（支持… |
+| 498 | `statEntry()` | ---------------------------------------------------------------- 目录列举 |
+| 520 | `hasSubDir()` | / |
+| 533 | `listDir()` |  |
+| 551 | `sortEntries()` | 服务端排序 —— 分页之后排序必须在这里做，否则只排当前页 |
+| 568 | `resolveScope()` | / |
+| 602 | `expandItems()` | 批量接口入参：给明确 items，或给 scope（= 全选当前视图的全部文件） |
+| 636 | `edgeUserDataDir()` |  |
+| 646 | `readEdgePrefs()` | / |
+| 683 | `markSelfWrite()` | 网页自己写入的文件：登记忽略，否则监听器会把自己的操作当成"新下载" |
+| 695 | `isSelfWrite()` |  |
+| 703 | `snapshotTop()` |  |
+| 712 | `sseSend()` |  |
+| 720 | `waitFileReady()` | 等文件写完：同级还有 .crdownload、或大小还在变，都不算下载完成 |
+| 734 | `matchSmartRule()` | 文件名"有没有意义"：命中设置里的 smartRules 正则就算没意义 |
+| 742 | `queueInboxItem()` |  |
+| 761 | `ingestFile()` | / |
+| 828 | `autoIngestQuiet()` | 「全自动：直接入库不打扰」/ smart 判定为"名字有意义"时走这里 |
+| 846 | `dispatchNewFile()` | / |
+| 871 | `scanRoot()` | 扫一个根目录的顶层，找出"新增的文件"并按策略分派 |
+| 897 | `stopInbox()` |  |
+| 906 | `startInbox()` | （重新）挂上所有根目录的监听。roots 变了、开关变了都要重来一遍 |
+| 932 | `ingestKey()` | 入库位置的唯一标识（虚拟分类靠 gid 区分，文件夹靠相对路径） |
+| 937 | `collectDirs()` | 递归列文件夹（DFS + 带层级 depth），最多 limit 个 |
+| 958 | `listIngestTargets()` | / |
+| 1787 | `browserInfo()` | 给网页设置面板用：当前选的是谁 + 自动发现的本机浏览器列表 |
+| 1796 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
+| 1843 | `addRoot()` |  |
 
 ## 四、前端函数 / 常量（126 个函数）
 
@@ -220,38 +220,38 @@
 | 2102 | `showModal()` |  |
 | 2108 | `closeModal()` |  |
 | 2115 | `openSettings()` |  |
-| 2221 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
-| 2234 | `checkMjaInstalled()` | / |
-| 2259 | `dvStatusHTML()` |  |
-| 2266 | `openDeliverPanel()` |  |
-| 2342 | `openHelp()` |  |
-| 2370 | `onSearchInput()` |  |
-| 2382 | `doSearch()` |  |
-| 2403 | `showCtxMenu()` |  |
-| 2463 | `renderCtxMenu()` |  |
-| 2482 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
-| 2515 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
-| 2531 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
-| 2548 | `hideCtxMenu()` |  |
-| 2550 | `revealInExplorer()` |  |
-| 2557 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
-| 2566 | `checkDuplicates()` |  |
-| 2582 | `showDragGhost()` |  |
-| 2591 | `moveDragGhost()` |  |
-| 2597 | `hideDragGhost()` |  |
-| 2601 | `setDropHints()` |  |
-| 2607 | `clearDropTargets()` |  |
-| 2615 | `isFileDrag()` | / |
-| 2632 | `dragKind()` | / |
-| 2643 | `bindEvents()` | / |
-| 2654 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
-| 2682 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
-| 2707 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
-| 2732 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
-| 2783 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
-| 2811 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
-| 2954 | `bindKeyboardEvents()` | / |
-| 3031 | `init()` |  |
+| 2223 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
+| 2236 | `checkMjaInstalled()` | / |
+| 2261 | `dvStatusHTML()` |  |
+| 2268 | `openDeliverPanel()` |  |
+| 2344 | `openHelp()` |  |
+| 2372 | `onSearchInput()` |  |
+| 2384 | `doSearch()` |  |
+| 2405 | `showCtxMenu()` |  |
+| 2465 | `renderCtxMenu()` |  |
+| 2484 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
+| 2517 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
+| 2533 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
+| 2550 | `hideCtxMenu()` |  |
+| 2552 | `revealInExplorer()` |  |
+| 2559 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
+| 2568 | `checkDuplicates()` |  |
+| 2584 | `showDragGhost()` |  |
+| 2593 | `moveDragGhost()` |  |
+| 2599 | `hideDragGhost()` |  |
+| 2603 | `setDropHints()` |  |
+| 2609 | `clearDropTargets()` |  |
+| 2617 | `isFileDrag()` | / |
+| 2634 | `dragKind()` | / |
+| 2645 | `bindEvents()` | / |
+| 2656 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
+| 2684 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
+| 2709 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
+| 2734 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
+| 2785 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
+| 2813 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
+| 2956 | `bindKeyboardEvents()` | / |
+| 3033 | `init()` |  |
 
 ### 前端顶层常量
 
@@ -278,7 +278,7 @@
 | 229 | `Thumb` |  |
 | 341 | `thumbQueue` |  |
 | 351 | `lazyObs` |  |
-| 2215 | `DELIVER_TARGETS` |  |
+| 2217 | `DELIVER_TARGETS` |  |
 
 ## 五、db.js（155 行）
 
@@ -293,4 +293,35 @@
 | 93 | `replaceVGroups()` |  |
 | 111 | `readJSON()` | ---------------- 首次迁移：把旧 JSON 导进库 ---------------- |
 | 118 | `migrate()` |  |
+
+## 六、launcher.js（236 行）
+
+| 行 | 名字 | 说明 |
+|---|---|---|
+| 81 | `loadValues()` | ---------------- 记忆 ---------------- |
+| 92 | `saveValues()` |  |
+| 98 | `buildArgs()` | ---------------- 启动 ---------------- |
+| 109 | `start()` |  |
+| 125 | `refreshChoices()` |  |
+| 132 | `currentText()` | 菜单上显示当前值：优先显示选项的 label，找不到就原样显示 |
+| 140 | `render()` |  |
+| 155 | `editOption()` |  |
+| 190 | `parseDirect()` | 命令行直通：node launcher.js browser=chrome port=8898 （给快捷方式用） |
+| 199 | `main()` |  |
+
+## 七、browsers.js（211 行）
+
+| 行 | 名字 | 说明 |
+|---|---|---|
+| 43 | `friendlyName()` | exe 名 → 友好名（注册表里叫 "Google Chrome" 的，兜底路径里也叫 "Google Chrome"） |
+| 54 | `regQuery()` | / |
+| 66 | `regValue()` | 从 reg 输出里取 REG_SZ 的值 |
+| 72 | `exeFromCommand()` | `"C:\x\chrome.exe" --single-argument` → `C:\x\chrome.exe` |
+| 86 | `fromStartMenu()` | ① StartMenuInternet：系统里"注册为浏览器"的都在这里（装哪个盘都躲不掉） |
+| 106 | `fromAppPaths()` | ② App Paths：安装程序登记的完整路径 |
+| 119 | `fromCommonPaths()` | ③ 常见安装路径（兜底：绿色版 / 注册表没登记的） |
+| 136 | `fromPath()` | ④ PATH 查找 |
+| 151 | `discoverUnix()` | 非 Windows：给几个常见位置（macOS / Linux） |
+| 168 | `discover()` | 列出本机浏览器：[{ name, path, source }]，按可靠度去重 |
+| 194 | `resolve()` | / |
 

@@ -23,7 +23,8 @@ const path = require('path');
 
 const ROOT = __dirname;
 const OUT = path.join(ROOT, 'CODE_MAP.index.md');
-const SOURCES = ['server.js', 'db.js', 'public/app.js', 'public/index.html', 'public/style.css'];
+const SOURCES = ['server.js', 'db.js', 'launcher.js', 'browsers.js',
+  'public/app.js', 'public/index.html', 'public/style.css'];
 
 /** 函数定义 / 常量定义 */
 const RE_FUNC = /^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/;
@@ -86,7 +87,7 @@ function scan(rel) {
     const f = RE_FUNC.exec(line);
     if (f) { funcs.push({ no, name: f[1], desc: describe(lines, i) }); return; }
     const a = RE_ARROW.exec(line) || RE_CONST.exec(line);
-    if (a && /^(server|db|public\/app)\.js$/.test(rel)) {
+    if (a && /^(server|db|launcher|browsers|public\/app)\.js$/.test(rel)) {
       consts.push({ no, name: a[1], desc: describe(lines, i) });
     }
   });
@@ -151,15 +152,18 @@ function build() {
     }
   }
 
-  const db = scanned['db.js'];
-  if (db) {
-    out.push(`## 五、db.js（${db.lines} 行）`);
+  // 其余模块（数据层 / 启动器 / 浏览器发现）—— 加了新模块就往这个列表里补一个文件名
+  const OTHERS = ['db.js', 'launcher.js', 'browsers.js'];
+  OTHERS.forEach((rel, idx) => {
+    const m = scanned[rel];
+    if (!m) return;
+    out.push(`## ${['五', '六', '七', '八'][idx] || '附'}、${rel}（${m.lines} 行）`);
     out.push('');
     out.push('| 行 | 名字 | 说明 |');
     out.push('|---|---|---|');
-    for (const f of db.funcs) out.push(`| ${f.no} | \`${f.name}()\` | ${f.desc} |`);
+    for (const f of m.funcs) out.push(`| ${f.no} | \`${f.name}()\` | ${f.desc} |`);
     out.push('');
-  }
+  });
 
   return out.join('\n') + '\n';
 }

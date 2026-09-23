@@ -2139,7 +2139,9 @@ async function openSettings() {
     <select id="stBrowser">${brOpts}</select>
     <div style="font-size:11.5px;color:var(--text-faint);margin-top:6px">
       改完<b>下次启动生效</b>（浏览器是在服务启动那一刻打开的）。<br>
-      想这次就用某个浏览器：双击对应的 <b>启动-*.bat</b>，或命令行加 <code>--browser=chrome</code>。
+      更省事的办法：双击 <b>启动.bat</b>，在启动器菜单里选 —— <b>选一次会记住</b>，下次回车即用。<br>
+      列表是<b>自动扫描</b>本机注册的浏览器（注册表 + 常见路径），装在 D 盘、绿色版也找得到；
+      实在扫不到的，在启动器里选「手动输入」粘贴 exe 路径。
       ${brNow && !brNow.found ? '<br>⚠️ 当前选的这个没检测到，启动时会自动回退系统默认。' : ''}
     </div>
 

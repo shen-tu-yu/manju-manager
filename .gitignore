@@ -5,6 +5,7 @@ data.db-shm
 debug.log
 clipboard.log
 *.bak
+launcher.json
 
 # 回收站 / 系统垃圾
 .recycle/

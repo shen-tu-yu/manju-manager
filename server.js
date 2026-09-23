@@ -19,6 +19,7 @@ const APP_DIR = __dirname;
 
 // 数据层：Node 内置 node:sqlite，零依赖。数据库文件在这个目录里，不占 C 盘。
 const DB = require('./db');
+const browsers = require('./browsers');   // 自动发现本机浏览器（不写死安装路径）
 DB.migrate();   // 首次启动把旧的 config.json / vgroups.json 导进库（库非空时什么都不做）
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
 const CONFIG_PATH = path.join(APP_DIR, 'config.json');
@@ -127,7 +128,11 @@ let rootSeq = config.roots.length;
     if (argv[i] === '--port' && argv[i + 1]) config.port = Number(argv[++i]);
     else if (argv[i] === '--host' && argv[i + 1]) config.host = argv[++i];
     else if (argv[i] === '--browser' && argv[i + 1]) config.browser = argv[++i];
+    else if (argv[i] === '--browser-exe' && argv[i + 1]) config.browser = argv[++i];
+    else if (argv[i].startsWith('--browser-exe=')) config.browser = argv[i].slice('--browser-exe='.length);
     else if (argv[i].startsWith('--browser=')) config.browser = argv[i].slice('--browser='.length);
+    else if (argv[i].startsWith('--port=')) config.port = Number(argv[i].slice('--port='.length));
+    else if (argv[i].startsWith('--host=')) config.host = argv[i].slice('--host='.length);
     else if ((argv[i] === '--root' || argv[i] === '-r') && argv[i + 1]) addRoot(argv[++i], null, true);
   }
 })();
@@ -1038,7 +1043,11 @@ const server = http.createServer(async (req, res) => {
       const b = await body();
       const oldInbox = config.inboxEnabled !== false;
       if (typeof b.title === 'string') config.title = b.title;
-      if (typeof b.browser === 'string' && (b.browser === 'default' || BROWSERS[b.browser])) config.browser = b.browser;
+      if (typeof b.browser === 'string') {
+        const v = b.browser.trim();
+        if (v === 'default') config.browser = 'default';
+        else { const hit = browsers.resolve(v); if (hit) config.browser = hit; }   // 只接受能解析到的
+      }
       if (typeof b.autoPolicy === 'string') config.autoPolicy = b.autoPolicy;
       if (typeof b.inboxEnabled === 'boolean') config.inboxEnabled = b.inboxEnabled;
       if (typeof b.showHidden === 'boolean') config.showHidden = b.showHidden;
@@ -1774,73 +1783,31 @@ server.on('error', (e) => {
   process.exit(1);
 });
 
-/**
- * 支持的浏览器（加一个就往这张表加一行，网页设置里会自动出现）。
- * 'default' = 系统默认浏览器，不走这张表。
- * 路径里的 %VAR% 用环境变量展开；找不到再走 PATH 查找。
- */
-const BROWSERS = {
-  chrome: {
-    name: 'Google Chrome',
-    exe: 'chrome.exe',
-    win: [
-      '%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe',
-      '%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe',
-      '%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe',
-    ],
-  },
-};
-
-function expandEnv(p) {
-  return String(p).replace(/%([^%]+)%/g, (_, k) => process.env[k] || '');
-}
-
-/** 找浏览器的可执行文件；找不到返回 null（调用方回退系统默认） */
-function findBrowser(id) {
-  const b = BROWSERS[id];
-  if (!b) return null;
-  const cands = [];
-  if (process.platform === 'win32') {
-    for (const t of (b.win || [])) cands.push(expandEnv(t));
-    const exe = b.exe || (id + '.exe');
-    for (const dir of String(process.env.PATH || '').split(path.delimiter)) {
-      if (dir) cands.push(path.join(dir, exe));
-    }
-  } else if (process.platform === 'darwin') {
-    cands.push(`/Applications/${b.name}.app/Contents/MacOS/${b.name}`);
-  }
-  for (const c of cands) {
-    try { if (c && fs.existsSync(c)) return c; } catch { /* 路径非法就算了 */ }
-  }
-  return null;
-}
-
-/** 给网页设置面板用：当前选的是谁 + 每个检测到没有 */
+/** 给网页设置面板用：当前选的是谁 + 自动发现的本机浏览器列表 */
 function browserInfo() {
   const list = [{ id: 'default', name: '系统默认浏览器', found: true, path: '' }];
-  for (const [id, b] of Object.entries(BROWSERS)) {
-    const p = findBrowser(id);
-    list.push({ id, name: b.name, found: !!p, path: p || '' });
+  for (const b of browsers.discover()) {
+    list.push({ id: b.path, name: b.name, found: true, path: b.path, source: b.source });
   }
   return { current: config.browser || 'default', list };
 }
 
-/** 服务就绪后自动打开浏览器（启动.bat 传 --open 时启用） */
+/** 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） */
 function openBrowser(url) {
   const { spawn } = require('child_process');
-  const id = config.browser || 'default';
-  if (id !== 'default') {
-    const exe = findBrowser(id);
+  const want = config.browser || 'default';
+  if (want !== 'default') {
+    const exe = browsers.resolve(want);
     if (exe) {
       try {
         spawn(exe, [url], { detached: true, stdio: 'ignore' }).unref();
-        console.log(`   打开浏览器： ${BROWSERS[id].name}  (${exe})`);
+        console.log('   打开浏览器： ' + exe);
         return;
       } catch (e) {
-        console.log(`   [提示] 启动 ${BROWSERS[id].name} 失败（${e.message}），改用系统默认浏览器`);
+        console.log(`   [提示] 启动 ${exe} 失败（${e.message}），改用系统默认浏览器`);
       }
     } else {
-      console.log(`   [提示] 没找到 ${BROWSERS[id] ? BROWSERS[id].name : id}，改用系统默认浏览器`);
+      console.log(`   [提示] 找不到配置的浏览器（${want}），改用系统默认浏览器`);
     }
   }
   try {
