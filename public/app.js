@@ -2116,17 +2116,32 @@ async function openSettings() {
   const stats = await Thumb.stats();
   let edge = null;
   try { edge = await api('/api/edge'); } catch { /* 后端没响应就不显示这块 */ }
+  let br = null;
+  try { br = await api('/api/browsers'); } catch { /* 同上 */ }
   const edgeDir = (edge && edge.dir) ? edge.dir : '（没读到）';
   const edgeFrom = !edge ? '没读到后端'
     : (edge.source === 'edge'
       ? `同步自 Edge ${edge.profile || 'Default'} 的下载设置 —— 你在 Edge 里改了，这里自动跟着变`
       : '没读到 Edge，已回退系统「下载」文件夹');
+  const brList = (br && br.list) ? br.list : [{ id: 'default', name: '系统默认浏览器', found: true }];
+  const brCur = (br && br.current) || 'default';
+  const brOpts = brList.map((b) => `<option value="${esc(b.id)}"${b.id === brCur ? ' selected' : ''}${b.found ? '' : ' disabled'}>`
+    + `${esc(b.name)}${b.id === 'default' ? '' : (b.found ? '' : '（没检测到）')}</option>`).join('');
+  const brNow = brList.find((b) => b.id === brCur);
   showModal(`
     <h3>设置</h3>
     <div class="modal-sub">配置保存在程序目录的 data.db（SQLite）</div>
 
     <label>标题</label>
     <input type="text" id="stTitle" value="${esc(S.cfg.title || '')}">
+
+    <label>启动时用哪个浏览器打开</label>
+    <select id="stBrowser">${brOpts}</select>
+    <div style="font-size:11.5px;color:var(--text-faint);margin-top:6px">
+      改完<b>下次启动生效</b>（浏览器是在服务启动那一刻打开的）。<br>
+      想这次就用某个浏览器：双击对应的 <b>启动-*.bat</b>，或命令行加 <code>--browser=chrome</code>。
+      ${brNow && !brNow.found ? '<br>⚠️ 当前选的这个没检测到，启动时会自动回退系统默认。' : ''}
+    </div>
 
     <label style="display:flex;align-items:center;gap:8px;margin-top:14px">
       <input type="checkbox" id="stHidden" style="width:auto" ${S.cfg.showHidden ? 'checked' : ''}>
@@ -2181,6 +2196,7 @@ async function openSettings() {
     try {
       await apiPost('/api/config', {
         title: $('#stTitle').value.trim() || '漫剧素材管理',
+        browser: $('#stBrowser').value,
         showHidden: $('#stHidden').checked,
         autoPolicy: $('#stPolicy').value,
         inboxEnabled: $('#stInbox').checked,

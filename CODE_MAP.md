@@ -112,6 +112,18 @@
 `queueInboxItem` `ingestFile`（入库唯一实现）`autoIngestQuiet` `dispatchNewFile` `scanRoot`
 `stopInbox` / `startInbox` `ingestKey` `collectDirs` `listIngestTargets`。
 
+### 2.4 启动时打开哪个浏览器
+
+- **表：`BROWSERS`（server.js）** —— 加浏览器就往这张表加一行（`name` / `exe` / `win` 候选路径，
+  `%VAR%` 用环境变量展开）。**前端不用改**：网页设置的下拉是 `GET /api/browsers` 动态渲染的。
+- `findBrowser(id)`：按候选路径 + `PATH` 查找，找不到返回 `null`
+- `browserInfo()`：给 `GET /api/browsers` 用（当前选的是谁 + 每个检测到没有）
+- `openBrowser(url)`：`--open` 时调用。**指定的浏览器找不到就回退系统默认**并在控制台打印提示，
+  不会因为没装 Chrome 就打不开页面。
+- 四个入口：`启动.bat`（系统默认）/ `启动-Chrome.bat`（`--open --browser=chrome`）/
+  网页设置（写 `config.browser`，**下次启动生效**）/ 命令行 `--browser=chrome`
+- 配置项：`browser`（`default` \| `chrome`），存 settings 表；POST `/api/config` 里对非法值有白名单校验
+
 ---
 
 ## 三、前端（`public/app.js`）
@@ -321,6 +333,9 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 | `textPreviewBytes` | 2MB | 文本预览上限 |
 
 **前端** `TUNING` —— 只是兜底，启动时被服务端 `limits` 覆盖。
+
+**其它配置**（同样在 `DEFAULT_CONFIG` 里）：`port` / `host` / `title` / `showHidden` /
+`projectTemplate` / **`browser`**（启动时用哪个浏览器打开，见 2.4）。
 
 **收件箱相关配置**（都在 `DEFAULT_CONFIG`，存进 `data.db` 的 `settings` 表）：
 

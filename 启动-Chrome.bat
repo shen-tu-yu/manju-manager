@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Manju Material Manager - 127.0.0.1:8899
+title Manju Material Manager (Chrome) - 127.0.0.1:8899
 pushd "%~dp0"
 
 node --version >nul 2>nul
@@ -8,14 +8,13 @@ if errorlevel 1 goto NONODE
 
 echo.
 echo   ============================================================
-echo     Manju Material Manager
+echo     Manju Material Manager   --   Google Chrome
 echo   ============================================================
 echo.
-echo     Browser will open automatically:
+echo     Chrome will open automatically:
 echo         http://127.0.0.1:8899
 echo.
-echo     Want Google Chrome?  Double-click the "-Chrome.bat" file
-echo     (or set it once in the web UI: Settings - Browser).
+echo     If Chrome is not found, the default browser is used instead.
 echo.
 echo     KEEP THIS WINDOW OPEN.
 echo     Closing this window stops the service.
@@ -25,7 +24,7 @@ echo.
 echo   ============================================================
 echo.
 
-node server.js --open
+node server.js --open --browser=chrome
 set EXITCODE=%errorlevel%
 
 echo.

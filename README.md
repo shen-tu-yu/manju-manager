@@ -8,9 +8,15 @@
 
 ## 一、怎么启动
 
-**双击 `启动.bat`** 就行。
+**双击 `启动.bat`** 就行 —— 它会用你的**系统默认浏览器**打开页面。
 
-或者命令行：
+想指定浏览器打开：
+
+- 双击 **`启动-Chrome.bat`** —— 用 Google Chrome 打开（没装 Chrome 会自动回退系统默认浏览器）
+- 或者进网页 **⚙ 设置 → 启动时用哪个浏览器打开**，选一次以后都生效（**下次启动**生效）
+- 或者命令行加参数：`node server.js --open --browser=chrome`
+
+或者命令行（不自动开浏览器）：
 
 ```
 node server.js
@@ -273,7 +279,8 @@ D:\文件管理\
 ├── server.js          后端（零依赖）
 ├── db.js              数据层 —— Node 内置 node:sqlite，没装任何包
 ├── data.db            数据库：根目录 / 虚拟分类 / 设置
-├── 启动.bat           双击启动
+├── 启动.bat           双击启动（系统默认浏览器）
+├── 启动-Chrome.bat    双击启动（用 Google Chrome 打开）
 ├── public\            前端界面
 │   ├── index.html
 │   ├── app.js

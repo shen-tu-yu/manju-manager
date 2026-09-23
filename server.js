@@ -67,6 +67,7 @@ function kindOf(name) {
 const DEFAULT_CONFIG = {
   port: 8899,
   host: '127.0.0.1',
+  browser: 'default',        // 启动时用哪个浏览器打开：'default' 或 BROWSERS 里的 key
   title: '漫剧素材管理',
   roots: [],                 // [{ id, name, path }]
   autoPolicy: 'smart',       // smart | always | never
@@ -105,7 +106,7 @@ function loadConfig() {
 function saveConfig() {
   try {
     const s = {};
-    for (const k of ['port', 'host', 'title', 'autoPolicy', 'inboxEnabled', 'lastIngestTarget',
+    for (const k of ['port', 'host', 'browser', 'title', 'autoPolicy', 'inboxEnabled', 'lastIngestTarget',
       'ingestHistory', 'showHidden', 'projectTemplate', 'smartRules', 'limits']) {
       s[k] = config[k];
     }
@@ -125,6 +126,8 @@ let rootSeq = config.roots.length;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port' && argv[i + 1]) config.port = Number(argv[++i]);
     else if (argv[i] === '--host' && argv[i + 1]) config.host = argv[++i];
+    else if (argv[i] === '--browser' && argv[i + 1]) config.browser = argv[++i];
+    else if (argv[i].startsWith('--browser=')) config.browser = argv[i].slice('--browser='.length);
     else if ((argv[i] === '--root' || argv[i] === '-r') && argv[i + 1]) addRoot(argv[++i], null, true);
   }
 })();
@@ -1017,6 +1020,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/config' && req.method === 'GET') {
       return sendJSON(res, 200, {
         title: config.title,
+        browser: config.browser || 'default',
         roots: config.roots.map((r) => ({ id: r.id, name: r.name, path: r.path, exists: fs.existsSync(r.path) })),
         autoPolicy: config.autoPolicy,
         inboxEnabled: config.inboxEnabled !== false,
@@ -1034,6 +1038,7 @@ const server = http.createServer(async (req, res) => {
       const b = await body();
       const oldInbox = config.inboxEnabled !== false;
       if (typeof b.title === 'string') config.title = b.title;
+      if (typeof b.browser === 'string' && (b.browser === 'default' || BROWSERS[b.browser])) config.browser = b.browser;
       if (typeof b.autoPolicy === 'string') config.autoPolicy = b.autoPolicy;
       if (typeof b.inboxEnabled === 'boolean') config.inboxEnabled = b.inboxEnabled;
       if (typeof b.showHidden === 'boolean') config.showHidden = b.showHidden;
@@ -1041,6 +1046,11 @@ const server = http.createServer(async (req, res) => {
       saveConfig();
       if (oldInbox !== (config.inboxEnabled !== false)) startInbox().catch(() => { });
       return sendJSON(res, 200, { ok: true, config });
+    }
+
+    // 可选浏览器列表（设置面板的下拉用它渲染，顺便显示检测到没有）
+    if (p === '/api/browsers' && req.method === 'GET') {
+      return sendJSON(res, 200, browserInfo());
     }
 
     // ============================ 收件箱（新文件到达） ============================
@@ -1764,10 +1774,76 @@ server.on('error', (e) => {
   process.exit(1);
 });
 
+/**
+ * 支持的浏览器（加一个就往这张表加一行，网页设置里会自动出现）。
+ * 'default' = 系统默认浏览器，不走这张表。
+ * 路径里的 %VAR% 用环境变量展开；找不到再走 PATH 查找。
+ */
+const BROWSERS = {
+  chrome: {
+    name: 'Google Chrome',
+    exe: 'chrome.exe',
+    win: [
+      '%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe',
+      '%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe',
+      '%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe',
+    ],
+  },
+};
+
+function expandEnv(p) {
+  return String(p).replace(/%([^%]+)%/g, (_, k) => process.env[k] || '');
+}
+
+/** 找浏览器的可执行文件；找不到返回 null（调用方回退系统默认） */
+function findBrowser(id) {
+  const b = BROWSERS[id];
+  if (!b) return null;
+  const cands = [];
+  if (process.platform === 'win32') {
+    for (const t of (b.win || [])) cands.push(expandEnv(t));
+    const exe = b.exe || (id + '.exe');
+    for (const dir of String(process.env.PATH || '').split(path.delimiter)) {
+      if (dir) cands.push(path.join(dir, exe));
+    }
+  } else if (process.platform === 'darwin') {
+    cands.push(`/Applications/${b.name}.app/Contents/MacOS/${b.name}`);
+  }
+  for (const c of cands) {
+    try { if (c && fs.existsSync(c)) return c; } catch { /* 路径非法就算了 */ }
+  }
+  return null;
+}
+
+/** 给网页设置面板用：当前选的是谁 + 每个检测到没有 */
+function browserInfo() {
+  const list = [{ id: 'default', name: '系统默认浏览器', found: true, path: '' }];
+  for (const [id, b] of Object.entries(BROWSERS)) {
+    const p = findBrowser(id);
+    list.push({ id, name: b.name, found: !!p, path: p || '' });
+  }
+  return { current: config.browser || 'default', list };
+}
+
 /** 服务就绪后自动打开浏览器（启动.bat 传 --open 时启用） */
 function openBrowser(url) {
+  const { spawn } = require('child_process');
+  const id = config.browser || 'default';
+  if (id !== 'default') {
+    const exe = findBrowser(id);
+    if (exe) {
+      try {
+        spawn(exe, [url], { detached: true, stdio: 'ignore' }).unref();
+        console.log(`   打开浏览器： ${BROWSERS[id].name}  (${exe})`);
+        return;
+      } catch (e) {
+        console.log(`   [提示] 启动 ${BROWSERS[id].name} 失败（${e.message}），改用系统默认浏览器`);
+      }
+    } else {
+      console.log(`   [提示] 没找到 ${BROWSERS[id] ? BROWSERS[id].name : id}，改用系统默认浏览器`);
+    }
+  }
   try {
-    const { spawn } = require('child_process');
     if (process.platform === 'win32') {
       spawn('rundll32.exe', ['url.dll,FileProtocolHandler', url], { detached: true, stdio: 'ignore' }).unref();
     } else if (process.platform === 'darwin') {
@@ -1775,6 +1851,7 @@ function openBrowser(url) {
     } else {
       spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
     }
+    console.log('   打开浏览器： 系统默认');
   } catch { /* 打不开就算了，用户手动访问即可 */ }
 }
 
