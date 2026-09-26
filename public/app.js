@@ -2663,10 +2663,28 @@ function renderBoardItems() {
   });
 }
 
+/**
+ * 「清空勾选」按钮的三态：没勾选就灰着、点不了；勾了就高亮并显示个数（提醒你投过没有）。
+ * 只依赖 boardData().skills，不依赖那棵树有没有渲染出来。
+ */
+function updateSkillClearBtn() {
+  if (!boardEl) return;
+  const btn = boardEl.querySelector('#pbSkillClear');
+  if (!btn) return;
+  const n = (boardData().skills || []).length;
+  btn.disabled = n === 0;
+  btn.classList.toggle('on', n > 0);
+  btn.textContent = n ? `清空勾选 (${n})` : '清空勾选';
+  btn.title = n
+    ? `取消这 ${n} 个勾选 —— 同一个对话投过一次就不用再投了`
+    : '还没勾选 skill（勾上之后这里会亮起来）';
+}
+
 /** 工作台标题栏那行小字（条数 / 秒数 / 配图 / skill）—— 只有这一处实现 */
 function updateBoardSub() {
   if (!boardEl) return;
   const d = boardData();
+  updateSkillClearBtn();          // 按钮状态跟着 skills 变
   const sub = boardEl.querySelector('#pbSub');
   if (!sub) return;
   sub.textContent = `${d.items.length} 条 · ${d.seconds}s`

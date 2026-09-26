@@ -981,3 +981,7 @@ body.dragging { cursor: grabbing; }
 /* 投放哪些 skill：标题 + 清空按钮一行 */
 .pb-skill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
 .pb-skill-head label { margin: 0; }
+
+/* 清空勾选按钮：有勾选时高亮（提醒你），没勾选时灰着且点不了 */
+.pb-mini.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+.pb-mini:disabled { opacity: .45; cursor: default; }
