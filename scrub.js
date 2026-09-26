@@ -237,6 +237,19 @@ try {
 }
 console.log('（data.db / debug.log / launcher.json 都在 .gitignore 里就安全）');
 
+// .bat 的编码陷阱：含非 ASCII 又切到 65001 → cmd 解析必然乱码、把命令拆碎
+try {
+  for (const f of fs.readdirSync('.').filter((x) => /\.bat$/i.test(x))) {
+    const txt = fs.readFileSync(f).toString('latin1');
+    if (/[\x80-\xFF]/.test(txt) && /chcp\s+65001/i.test(txt)) {
+      console.log('  ⚠️ ' + f + '：含非 ASCII 又切到 65001 —— cmd 解析 .bat 会乱码、把命令拆碎');
+      console.log('     正确做法：.bat 只当纯 ASCII 启动器，逻辑放 .ps1（UTF-8 带 BOM）里');
+      sideWarn++;
+    }
+  }
+} catch (e) {
+  console.log('  （.bat 编码检查跳过：' + e.message + '）');
+}
 // 退出码：给 bat / CI 判断用 —— 发现问题 → 1，干净 → 0
 // （「一键上传.bat」就是靠它决定要不要停下来问你）
 process.exit((left || sideWarn || (!FIX && totalHits)) ? 1 : 0);

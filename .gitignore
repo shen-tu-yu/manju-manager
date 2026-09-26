@@ -30,3 +30,6 @@ _*.cmd
 
 # 一键上传的 PowerShell 脚本（本地用，不入库）
 oneshot.ps1
+
+推送前检查.bat
+check.ps1
