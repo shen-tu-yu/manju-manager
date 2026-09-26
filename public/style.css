@@ -383,8 +383,9 @@ select:hover { color: var(--text); border-color: #3a4352; }
 
 /* ===================== 灯箱 ===================== */
 
+/* 灯箱（全屏看图）—— 必须盖在浮层面板上面，否则开着工作台点图会"什么都没出来" */
 #lightbox {
-  position: fixed; inset: 0; z-index: 900;
+  position: fixed; inset: 0; z-index: 1190;
   background: rgba(8, 9, 12, .97);
   display: flex; flex-direction: column;
   backdrop-filter: blur(6px);
@@ -432,8 +433,13 @@ select:hover { color: var(--text); border-color: #3a4352; }
 
 /* ===================== 模态框 ===================== */
 
+/* ⚠️ 层级顺序（从低到高，改之前先看 CODE_MAP「浮层层级」那一节）：
+   下拉 800 ＜ #dropMask 980 ＜ 浮层面板 .pboard 1080 ＜ 入库卡片 1099/1100
+   ＜ #ctxMenu 1150 ＜ #lightbox 1190 ＜ #modalMask 1200（弹窗必须盖住所有面板！）
+   ＜ .up-bar 1250 ＜ #toasts 1300（进度和提示永远看得见）＜ .drag-ghost 2000
+   —— 曾经的坑：弹窗只有 950、工作台 1080，于是"点预设什么都没弹出来"，其实弹在面板背后 */
 #modalMask {
-  position: fixed; inset: 0; z-index: 950;
+  position: fixed; inset: 0; z-index: 1200;
   background: rgba(6, 8, 11, .62);
   display: flex; align-items: center; justify-content: center;
   backdrop-filter: blur(3px);
@@ -544,7 +550,7 @@ select:hover { color: var(--text); border-color: #3a4352; }
 /* ===================== 右键菜单 ===================== */
 
 #ctxMenu {
-  position: fixed; z-index: 990; min-width: 200px;
+  position: fixed; z-index: 1150; min-width: 200px;
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 8px; box-shadow: var(--shadow); padding: 5px; overflow: hidden;
 }
@@ -623,7 +629,7 @@ body.dragging { cursor: grabbing; }
 /* ===================== Toast ===================== */
 
 #toasts {
-  position: fixed; right: 16px; bottom: 40px; z-index: 1000;
+  position: fixed; right: 16px; bottom: 40px; z-index: 1300;
   display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
   pointer-events: none;
 }
@@ -663,10 +669,10 @@ body.dragging { cursor: grabbing; }
 .btn.mini { padding: 3px 10px; font-size: 11.5px; }
 #statActions { display: flex; gap: 6px; margin-right: 10px; }
 
-/* 上传进度 */
+/* 上传进度（要盖在面板上面：大工作台居中时会压住这条进度条） */
 .up-bar {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-  z-index: 1000; min-width: 320px; padding: 12px 18px;
+  z-index: 1250; min-width: 320px; padding: 12px 18px;
   background: var(--panel-2); border: 1px solid var(--border);
   border-radius: 10px; box-shadow: var(--shadow); font-size: 12.5px;
 }
