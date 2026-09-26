@@ -797,14 +797,28 @@ body.dragging { cursor: grabbing; }
 .pb-items-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .pb-items { flex: 1 1 auto; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; }
 .pb-item {
-  display: grid; grid-template-columns: 24px 64px 1fr auto; gap: 9px; align-items: start;
+  display: grid; grid-template-columns: 24px 1fr auto; gap: 9px; align-items: start;
   background: #1b1f27; border: 1px solid var(--border); border-radius: 9px; padding: 8px;
 }
 .pb-item.drop-hot { border-color: var(--accent); background: var(--accent-soft); }
 .pb-idx { font-size: 11.5px; color: #6b7484; text-align: center; padding-top: 4px; }
-.pb-thumb { width: 64px; height: 64px; border-radius: 7px; overflow: hidden; background: #0f1115; display: flex; align-items: center; justify-content: center; }
+.pb-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pb-thumb {
+  position: relative; width: 56px; height: 56px; border-radius: 7px; overflow: hidden;
+  background: #0f1115; border: 1px solid var(--border);
+}
 .pb-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.pb-noimg { font-size: 10px; color: var(--text-faint); text-align: center; line-height: 1.5; }
+.pb-thumb.add {
+  border: 1px dashed #3a4557; color: var(--text-faint); font-size: 10px; line-height: 1.4;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+}
+.pb-thumb-x {
+  position: absolute; right: 1px; top: 1px; width: 16px; height: 16px; line-height: 1; padding: 0;
+  font-size: 11px; border: none; border-radius: 4px; cursor: pointer;
+  background: rgba(0, 0, 0, .62); color: #e6e9ef; opacity: 0; transition: opacity .12s;
+}
+.pb-thumb:hover .pb-thumb-x { opacity: 1; }
+.pb-thumb-x:hover { background: #6b2f30; }
 .pb-prompt { min-width: 0; }
 .pb-prompt textarea { width: 100%; height: 64px; resize: vertical; font-size: 12.5px; }
 .pb-meta { margin-top: 3px; font-size: 10.5px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -817,8 +831,8 @@ body.dragging { cursor: grabbing; }
 .pb-foot { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--border); }
 
 /* 缩小态：条目紧凑些，缩略图和拖放照旧 */
-.pboard.small .pb-item { grid-template-columns: 20px 48px 1fr auto; gap: 6px; padding: 6px; }
-.pboard.small .pb-thumb { width: 48px; height: 48px; }
+.pboard.small .pb-item { grid-template-columns: 20px 1fr auto; gap: 6px; padding: 6px; }
+.pboard.small .pb-thumb { width: 44px; height: 44px; }
 .pboard.small .pb-prompt textarea { height: 42px; font-size: 11.5px; }
 .pboard.small .pb-items-head { padding: 6px 10px; }
 .pboard.small .pb-foot { display: none; }

@@ -2256,10 +2256,15 @@ async function previewSkill(dir, f) {
 let boardEl = null;
 let boardSaveTimer = null;
 
+const BOARD_IMAGES_MAX = 12;   // 和 server.js 的 BOARD_IMAGES_MAX 保持一致
+
 const newBoardItem = () => ({
   id: 'it' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-  prompt: '', image: null, state: '', note: '',
+  prompt: '', images: [], state: '', note: '',
 });
+
+/** 整块板子上总共配了多少张图 */
+const boardImageCount = () => boardData().items.reduce((n, x) => n + ((x.images || []).length), 0);
 
 function boardData() {
   if (!S.board) S.board = { open: false, big: true, script: '', seconds: 10, skills: [], items: [] };
@@ -2271,7 +2276,7 @@ function saveBoard(now) {
   const d = boardData();
   const payload = {
     script: d.script, seconds: d.seconds, skills: d.skills,
-    items: d.items.map(({ id, prompt, image, state, note }) => ({ id, prompt, image, state, note })),
+    items: d.items.map(({ id, prompt, images, state, note }) => ({ id, prompt, images, state, note })),
   };
   const put = () => apiPost('/api/board', payload).catch((e) => toast('工作台保存失败：' + e.message, 'err'));
   clearTimeout(boardSaveTimer);
@@ -2292,7 +2297,7 @@ async function openBoard() {
         d.items = (Array.isArray(saved.items) ? saved.items : []).map((it) => ({
           id: it.id || newBoardItem().id,
           prompt: it.prompt || '',
-          image: it.image || null,
+          images: Array.isArray(it.images) ? it.images : (it.image ? [it.image] : []),   // 老数据（单图）自动升级
           state: it.state || '',
           note: it.note || '',
         }));
@@ -2373,9 +2378,9 @@ function buildBoard() {
   };
   boardEl.querySelector('#pbClearImgs').onclick = () => {
     const d = boardData();
-    if (!d.items.some((x) => x.image)) return toast('现在没有配图', 'warn');
+    if (!boardImageCount()) return toast('现在没有配图', 'warn');
     if (!confirm('清空所有条目的配图？\n（只是解除配图，文件一个都不动）')) return;
-    d.items.forEach((x) => { x.image = null; });
+    d.items.forEach((x) => { x.images = []; });
     renderBoard(); saveBoard(true);
   };
   boardEl.querySelector('#pbClearAll').onclick = () => {
@@ -2418,23 +2423,91 @@ function buildBoard() {
   });
 }
 
-/** 把拖进来的素材配给条目：指定了 id 就配那条，否则填第一条还没图的 */
+/**
+ * 把拖进来的素材配给条目：指定了 id 就加到那条，否则填第一条还没图的（都没有就新建一条）。
+ * **一条提示词可以配多张图** —— 拖进来的是追加，不是覆盖；同一张图不会重复加。
+ */
 function assignBoardImages(paths, itemId) {
   const d = boardData();
   const files = paths.filter((p) => !isVirtualPath(p));
   if (!files.length) return toast('文件夹 / 虚拟分类不能当配图，拖具体文件进来', 'warn');
+
   let idx = d.items.findIndex((x) => x.id === itemId);
-  if (idx < 0) idx = d.items.findIndex((x) => !x.image);
+  if (idx < 0) idx = d.items.findIndex((x) => !(x.images || []).length);
   if (idx < 0) { d.items.push(newBoardItem()); idx = d.items.length - 1; }
-  let n = 0;
+
+  const it = d.items[idx];
+  it.images = it.images || [];
+  let added = 0, dup = 0, full = 0;
   for (const p of files) {
-    if (idx >= d.items.length) d.items.push(newBoardItem());
-    d.items[idx].image = { root: S.rootId, path: p };
-    idx++; n++;
+    if (it.images.some((x) => x.root === S.rootId && x.path === p)) { dup++; continue; }
+    if (it.images.length >= BOARD_IMAGES_MAX) { full++; continue; }
+    it.images.push({ root: S.rootId, path: p });
+    added++;
   }
   renderBoard();
   saveBoard(true);
-  toast(`已给 ${n} 条配图`, 'ok');
+  const extra = (dup ? `，重复的跳过 ${dup} 张` : '') + (full ? `，超过 ${BOARD_IMAGES_MAX} 张的没加` : '');
+  toast(added
+    ? `第 ${idx + 1} 条已加 ${added} 张图（共 ${it.images.length} 张）${extra}`
+    : `没加进去${extra || '（都不是能配图的文件）'}`, added ? 'ok' : 'warn');
+}
+
+function renderBoardItems() {
+  const box = boardEl.querySelector('#pbItems');
+  const d = boardData();
+  box.innerHTML = '';
+  if (!d.items.length) {
+    box.innerHTML = '<div class="pb-dim">还没有条目 —— 点「＋ 加一条」，或直接从素材管理器拖图片进来</div>';
+    return;
+  }
+  d.items.forEach((it, i) => {
+    const list = it.images || [];
+    const imgs = list.map((im, k) => `
+      <div class="pb-thumb" title="${esc(baseName(im.path))}">
+        <img src="${esc(fileUrl(im.root, im.path))}" alt="" loading="lazy">
+        <button class="pb-thumb-x" data-k="${k}" title="移除这张">×</button>
+      </div>`).join('');
+    const row = document.createElement('div');
+    row.className = 'pb-item';
+    row.dataset.id = it.id;
+    row.innerHTML = `
+      <div class="pb-idx">${i + 1}</div>
+      <div class="pb-prompt">
+        <textarea spellcheck="false" placeholder="这一条的提示词…">${esc(it.prompt)}</textarea>
+        <div class="pb-imgs">${imgs}<div class="pb-thumb add">拖图<br>进来</div></div>
+        <div class="pb-meta">${list.length ? `配了 ${list.length} 张图` : '还没配图'}${it.state ? ' · ' + esc(it.state) : ''}</div>
+      </div>
+      <div class="pb-ops">
+        <button class="pb-op" data-op="up" title="上移">↑</button>
+        <button class="pb-op" data-op="down" title="下移">↓</button>
+        <button class="pb-op" data-op="img" title="去掉这一条的所有配图">🖼</button>
+        <button class="pb-op danger" data-op="del" title="删除这一条">×</button>
+      </div>`;
+    const ta = row.querySelector('textarea');
+    ta.oninput = () => { it.prompt = ta.value; saveBoard(); };   // 只存盘，不重渲染（不然焦点会丢）
+    row.querySelectorAll('.pb-thumb-x').forEach((b) => {
+      b.onclick = (ev) => {
+        ev.stopPropagation();
+        it.images.splice(Number(b.dataset.k), 1);
+        renderBoard(); saveBoard(true);
+      };
+    });
+    row.querySelectorAll('.pb-op').forEach((b) => {
+      b.onclick = () => {
+        const arr = d.items;
+        const k = arr.indexOf(it);
+        const op = b.dataset.op;
+        if (op === 'del') arr.splice(k, 1);
+        else if (op === 'up' && k > 0) { arr.splice(k, 1); arr.splice(k - 1, 0, it); }
+        else if (op === 'down' && k < arr.length - 1) { arr.splice(k, 1); arr.splice(k + 1, 0, it); }
+        else if (op === 'img') it.images = [];
+        else return;
+        renderBoard(); saveBoard(true);
+      };
+    });
+    box.appendChild(row);
+  });
 }
 
 function renderBoard() {
@@ -2445,7 +2518,7 @@ function renderBoard() {
   const sub = boardEl.querySelector('#pbSub');
   if (sub) {
     sub.textContent = `${d.items.length} 条 · ${d.seconds}s`
-      + ` · 配图 ${d.items.filter((x) => x.image).length}`
+      + ` · 配图 ${boardImageCount()} 张`
       + (d.skills.length ? ` · skill ${d.skills.length}` : '');
   }
   renderBoardSecs();
@@ -2464,53 +2537,6 @@ function renderBoardSecs() {
     b.onclick = () => { d.seconds = s; renderBoard(); saveBoard(); };
     box.appendChild(b);
   }
-}
-
-function renderBoardItems() {
-  const box = boardEl.querySelector('#pbItems');
-  const d = boardData();
-  box.innerHTML = '';
-  if (!d.items.length) {
-    box.innerHTML = '<div class="pb-dim">还没有条目 —— 点「＋ 加一条」，或直接从素材管理器拖图片进来</div>';
-    return;
-  }
-  d.items.forEach((it, i) => {
-    const row = document.createElement('div');
-    row.className = 'pb-item';
-    row.dataset.id = it.id;
-    const thumb = it.image
-      ? `<img src="${esc(fileUrl(it.image.root, it.image.path))}" alt="" loading="lazy">`
-      : '<div class="pb-noimg">拖图<br>进来</div>';
-    row.innerHTML = `
-      <div class="pb-idx">${i + 1}</div>
-      <div class="pb-thumb">${thumb}</div>
-      <div class="pb-prompt">
-        <textarea spellcheck="false" placeholder="这一条的提示词…">${esc(it.prompt)}</textarea>
-        <div class="pb-meta">${it.image ? esc(baseName(it.image.path)) : '还没配图'}${it.state ? ' · ' + esc(it.state) : ''}</div>
-      </div>
-      <div class="pb-ops">
-        <button class="pb-op" data-op="up" title="上移">↑</button>
-        <button class="pb-op" data-op="down" title="下移">↓</button>
-        <button class="pb-op" data-op="img" title="去掉这条的配图">🖼</button>
-        <button class="pb-op danger" data-op="del" title="删除这一条">×</button>
-      </div>`;
-    const ta = row.querySelector('textarea');
-    ta.oninput = () => { it.prompt = ta.value; saveBoard(); };   // 只存盘，不重渲染（不然焦点会丢）
-    row.querySelectorAll('.pb-op').forEach((b) => {
-      b.onclick = () => {
-        const arr = d.items;
-        const k = arr.indexOf(it);
-        const op = b.dataset.op;
-        if (op === 'del') arr.splice(k, 1);
-        else if (op === 'up' && k > 0) { arr.splice(k, 1); arr.splice(k - 1, 0, it); }
-        else if (op === 'down' && k < arr.length - 1) { arr.splice(k, 1); arr.splice(k + 1, 0, it); }
-        else if (op === 'img') it.image = null;
-        else return;
-        renderBoard(); saveBoard(true);
-      };
-    });
-    box.appendChild(row);
-  });
 }
 
 async function renderBoardSkills() {
@@ -2561,7 +2587,7 @@ function renderSkillPick(parent, node, depth, dir, chosen) {
       const sub = boardEl.querySelector('#pbSub');
       if (sub) {
         sub.textContent = `${dd.items.length} 条 · ${dd.seconds}s`
-          + ` · 配图 ${dd.items.filter((x) => x.image).length} · skill ${dd.skills.length}`;
+          + ` · 配图 ${boardImageCount()} 张 · skill ${dd.skills.length}`;
       }
     };
     parent.appendChild(row);

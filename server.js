@@ -1022,6 +1022,28 @@ async function collectSkillFiles(absDir, relDir, depth, out) {
   }
 }
 
+// ---------------------------------------------------------------- 提示词工作台
+
+const BOARD_IMAGES_MAX = 12;    // 一条提示词最多配多少张参考图（防手滑拖进来一百张）
+
+/**
+ * 把一条条目的配图归一成数组 —— **一条提示词可以配多张图**（人物 + 场景 + 风格…）。
+ * 顺便做三件事：去重、限数量、兼容早期只有单个 image 字段的数据。
+ */
+function normBoardImages(it) {
+  const out = [];
+  const push = (im) => {
+    if (!im || !im.root || !im.path) return;
+    const root = String(im.root), p = String(im.path);
+    if (out.some((x) => x.root === root && x.path === p)) return;
+    if (out.length >= BOARD_IMAGES_MAX) return;
+    out.push({ root, path: p });
+  };
+  if (Array.isArray(it && it.images)) it.images.forEach(push);
+  if (it && it.image) push(it.image);        // 老数据（单图）自动升级
+  return out;
+}
+
 // ---------------------------------------------------------------- 路由
 
 const server = http.createServer(async (req, res) => {
@@ -1241,9 +1263,12 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/board' && req.method === 'GET') {
       const d = DB.getSettings().promptBoard;
-      return sendJSON(res, 200, (d && typeof d === 'object') ? d : {
-        script: '', seconds: 10, skills: [], items: [],
-      });
+      const def = { script: '', seconds: 10, skills: [], items: [] };
+      if (!d || typeof d !== 'object') return sendJSON(res, 200, def);
+      return sendJSON(res, 200, Object.assign(def, d, {
+        items: (Array.isArray(d.items) ? d.items : []).map((it) => Object.assign({}, it, { images: normBoardImages(it) })),
+        imagesMax: BOARD_IMAGES_MAX,
+      }));
     }
 
     if (p === '/api/board' && req.method === 'POST') {
@@ -1255,7 +1280,7 @@ const server = http.createServer(async (req, res) => {
         items: Array.isArray(b.items) ? b.items.map((it) => ({
           id: String(it.id || ''),
           prompt: String(it.prompt == null ? '' : it.prompt),
-          image: (it.image && it.image.root && it.image.path) ? { root: String(it.image.root), path: String(it.image.path) } : null,
+          images: normBoardImages(it),
           state: String(it.state || ''),
           note: String(it.note || ''),
         })) : [],

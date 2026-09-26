@@ -270,7 +270,12 @@
 - **拖图**：面板自己的 `dragover`/`drop` 处理 `S.dragPaths`（内部拖拽），
   命中后 `ev.stopPropagation()` —— 否则 window 那层会把它当成"拖到空白处=取消"。
   **外部文件拖入不在这里处理**（`isFileDrag` 直接 return，留给上传逻辑）
-- 配图规则（`assignBoardImages`）：指定条目就配那条；拖到空白处填**第一条没图的**；不够就新建条目
+- **配图是数组**（`item.images`，**一条提示词可以配多张图**）：`assignBoardImages()` 往目标条目
+  **追加**（不是覆盖），同 `root+path` 去重，每条上限 `BOARD_IMAGES_MAX = 12`
+  —— ⚠️ 这个常量**前端和 server.js 各有一份，改要一起改**。
+  后端 `normBoardImages()` 统一负责"数组化 + 去重 + 限数 + **老的单图字段 `image` 自动升级成数组**"，
+  所以任何入口写进去的配图都会被规整
+- 拖到空白处 → 加到**第一条还没配图的**条目；都没有就新建一条
 - ⚠️ 条目 textarea 的 `oninput` **只 `saveBoard()`，绝不 `renderBoard()`** —— 重渲染会重建 textarea，
   用户的输入和光标都会丢
 - skill 勾选树复用 `buildSkillTree()` / `skillByName`（和左侧「技能」分区同一套层级规则，
