@@ -736,14 +736,19 @@ body.dragging { cursor: grabbing; }
 .skill-dir:hover .skill-x { opacity: 1; }
 .skill-head .skill-x:hover { color: #ffb3ae; border-color: #6b2f30; background: #2a1c1d; }
 .skill-bad { font-size: 10.5px; color: #f5b544; background: #2d2618; border: 1px solid #4a3a1c; border-radius: 9px; padding: 1px 7px; }
-.skill-files { padding: 0 0 4px 10px; display: flex; flex-direction: column; gap: 1px; }
-.skill-file {
-  display: flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 5px;
+.skill-tree { padding: 0 0 4px 2px; display: flex; flex-direction: column; gap: 1px; }
+.skill-children { display: flex; flex-direction: column; gap: 1px; }
+.skill-children.hidden { display: none; }
+.skill-node {
+  display: flex; align-items: center; gap: 5px; padding: 3px 7px 3px 0; border-radius: 5px;
   cursor: pointer; font-size: 12px; color: var(--text-dim);
 }
-.skill-file:hover { background: #21252e; color: var(--text); }
-.skill-file .sname { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skill-file .ssize { flex: 0 0 auto; font-size: 10.5px; color: #6b7484; }
+.skill-node:hover { background: #21252e; color: var(--text); }
+.skill-node .sk-arrow { flex: 0 0 auto; width: 10px; text-align: center; font-size: 9px; color: #6b7484; }
+.skill-node .sname { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-node .ssize { flex: 0 0 auto; font-size: 10.5px; color: #6b7484; }
+.skill-node-dir { color: #cfe0f7; }
+.skill-node-dir:hover { color: #fff; }
 .skill-empty { padding: 8px 10px; font-size: 11.5px; color: var(--text-faint); line-height: 1.8; }
 .skill-empty span { color: #6b7484; }
 .skill-empty-in { padding: 2px 0 4px 10px; font-size: 11px; color: var(--text-faint); }

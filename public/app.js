@@ -2116,6 +2116,63 @@ function openAddRootDialog(startPath, mode) {
  * 这些目录和素材根目录是两回事（见 CODE_MAP 2.5），互不干扰。
  */
 
+/** 把服务端给的扁平文件列表（rel 形如 `漫剧/分镜.md`）构造成树 */
+function buildSkillTree(files) {
+  const root = { dirs: new Map(), files: [] };
+  for (const f of files || []) {
+    const parts = String(f.rel || f.name || '').split('/').filter(Boolean);
+    if (!parts.length) continue;
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!node.dirs.has(parts[i])) node.dirs.set(parts[i], { dirs: new Map(), files: [] });
+      node = node.dirs.get(parts[i]);
+    }
+    node.files.push(Object.assign({}, f, { leaf: parts[parts.length - 1] }));
+  }
+  return root;
+}
+
+const skillByName = (a, b) => String(a[0] || a.leaf).localeCompare(String(b[0] || b.leaf), 'zh-Hans-CN', { numeric: true });
+const skillCount = (node) => node.files.length
+  + Array.from(node.dirs.values()).reduce((n, sub) => n + skillCount(sub), 0);
+
+/**
+ * 递归画一层树的节点（目录可折叠、文件按层级缩进）。
+ * 只显示"自己的名字"，路径靠缩进表达 —— 不再是一长条平铺的 `子目录/文件.md`。
+ */
+function renderSkillNode(parent, node, depth, dir) {
+  const pad = 4 + depth * 12;
+
+  for (const [name, sub] of Array.from(node.dirs.entries()).sort(skillByName)) {
+    const row = document.createElement('div');
+    row.className = 'skill-node skill-node-dir';
+    row.style.paddingLeft = pad + 'px';
+    row.innerHTML = `<span class="sk-arrow">▾</span><span class="sname">📁 ${esc(name)}</span>`
+      + `<span class="ssize">${skillCount(sub)}</span>`;
+
+    const kids = document.createElement('div');
+    kids.className = 'skill-children';
+    renderSkillNode(kids, sub, depth + 1, dir);
+
+    row.onclick = () => {
+      const off = kids.classList.toggle('hidden');
+      row.querySelector('.sk-arrow').textContent = off ? '▸' : '▾';
+    };
+    parent.appendChild(row);
+    parent.appendChild(kids);
+  }
+
+  for (const f of node.files.slice().sort(skillByName)) {
+    const row = document.createElement('div');
+    row.className = 'skill-node skill-node-file';
+    row.style.paddingLeft = (pad + 12) + 'px';
+    row.title = f.rel;
+    row.innerHTML = `<span class="sname">📄 ${esc(f.leaf || f.name)}</span><span class="ssize">${fmtSize(f.size)}</span>`;
+    row.onclick = () => previewSkill(dir, f);
+    parent.appendChild(row);
+  }
+}
+
 async function renderSkills() {
   const box = $('#skillList');
   if (!box) return;
@@ -2154,17 +2211,10 @@ async function renderSkills() {
     wrap.appendChild(head);
 
     if (d.exists && d.files.length) {
-      const ul = document.createElement('div');
-      ul.className = 'skill-files';
-      for (const f of d.files) {
-        const row = document.createElement('div');
-        row.className = 'skill-file';
-        row.title = f.rel;
-        row.innerHTML = `<span class="sname">📄 ${esc(f.rel)}</span><span class="ssize">${fmtSize(f.size)}</span>`;
-        row.onclick = () => previewSkill(d, f);
-        ul.appendChild(row);
-      }
-      wrap.appendChild(ul);
+      const tree = document.createElement('div');
+      tree.className = 'skill-tree';
+      renderSkillNode(tree, buildSkillTree(d.files), 0, d);
+      wrap.appendChild(tree);
       if (d.files.length >= (data.maxFiles || 300)) {
         const more = document.createElement('div');
         more.className = 'skill-empty-in';

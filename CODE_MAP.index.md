@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 17:11:58
+> 生成时间：2026/9/26 17:16:00
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -14,9 +14,9 @@
 | `db.js` | 179 |
 | `launcher.js` | 236 |
 | `browsers.js` | 211 |
-| `public/app.js` | 3156 |
+| `public/app.js` | 3206 |
 | `public/index.html` | 155 |
-| `public/style.css` | 756 |
+| `public/style.css` | 761 |
 
 ## 二、后端路由（42 个分支，全在 `http.createServer` 里）
 
@@ -128,7 +128,7 @@
 | 1891 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
 | 1938 | `addRoot()` |  |
 
-## 四、前端函数 / 常量（128 个函数）
+## 四、前端函数 / 常量（130 个函数）
 
 | 行 | 名字 | 说明 |
 |---|---|---|
@@ -223,43 +223,45 @@
 | 1885 | `showNextIngest()` | 一次只弹一张卡片，处理完自动弹下一张 |
 | 1892 | `openIngestCard()` |  |
 | 2015 | `openAddRootDialog()` | / |
-| 2119 | `renderSkills()` | / |
-| 2185 | `previewSkill()` | 看一份模板的内容（投放前确认用） |
-| 2201 | `showModal()` |  |
-| 2207 | `closeModal()` |  |
-| 2214 | `openSettings()` |  |
-| 2322 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
-| 2335 | `checkMjaInstalled()` | / |
-| 2360 | `dvStatusHTML()` |  |
-| 2367 | `openDeliverPanel()` |  |
-| 2443 | `openHelp()` |  |
-| 2471 | `onSearchInput()` |  |
-| 2483 | `doSearch()` |  |
-| 2504 | `showCtxMenu()` |  |
-| 2564 | `renderCtxMenu()` |  |
-| 2583 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
-| 2616 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
-| 2632 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
-| 2649 | `hideCtxMenu()` |  |
-| 2651 | `revealInExplorer()` |  |
-| 2658 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
-| 2667 | `checkDuplicates()` |  |
-| 2683 | `showDragGhost()` |  |
-| 2692 | `moveDragGhost()` |  |
-| 2698 | `hideDragGhost()` |  |
-| 2702 | `setDropHints()` |  |
-| 2708 | `clearDropTargets()` |  |
-| 2716 | `isFileDrag()` | / |
-| 2733 | `dragKind()` | / |
-| 2744 | `bindEvents()` | / |
-| 2755 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
-| 2784 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
-| 2809 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
-| 2834 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
-| 2885 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
-| 2913 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
-| 3056 | `bindKeyboardEvents()` | / |
-| 3133 | `init()` |  |
+| 2120 | `buildSkillTree()` | 把服务端给的扁平文件列表（rel 形如 `漫剧/分镜.md`）构造成树 |
+| 2143 | `renderSkillNode()` | / |
+| 2176 | `renderSkills()` |  |
+| 2235 | `previewSkill()` | 看一份模板的内容（投放前确认用） |
+| 2251 | `showModal()` |  |
+| 2257 | `closeModal()` |  |
+| 2264 | `openSettings()` |  |
+| 2372 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
+| 2385 | `checkMjaInstalled()` | / |
+| 2410 | `dvStatusHTML()` |  |
+| 2417 | `openDeliverPanel()` |  |
+| 2493 | `openHelp()` |  |
+| 2521 | `onSearchInput()` |  |
+| 2533 | `doSearch()` |  |
+| 2554 | `showCtxMenu()` |  |
+| 2614 | `renderCtxMenu()` |  |
+| 2633 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
+| 2666 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
+| 2682 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
+| 2699 | `hideCtxMenu()` |  |
+| 2701 | `revealInExplorer()` |  |
+| 2708 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
+| 2717 | `checkDuplicates()` |  |
+| 2733 | `showDragGhost()` |  |
+| 2742 | `moveDragGhost()` |  |
+| 2748 | `hideDragGhost()` |  |
+| 2752 | `setDropHints()` |  |
+| 2758 | `clearDropTargets()` |  |
+| 2766 | `isFileDrag()` | / |
+| 2783 | `dragKind()` | / |
+| 2794 | `bindEvents()` | / |
+| 2805 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
+| 2834 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
+| 2859 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
+| 2884 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
+| 2935 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
+| 2963 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
+| 3106 | `bindKeyboardEvents()` | / |
+| 3183 | `init()` |  |
 
 ### 前端顶层常量
 
@@ -286,7 +288,9 @@
 | 229 | `Thumb` |  |
 | 341 | `thumbQueue` |  |
 | 351 | `lazyObs` |  |
-| 2316 | `DELIVER_TARGETS` |  |
+| 2135 | `skillByName` |  |
+| 2136 | `skillCount` |  |
+| 2366 | `DELIVER_TARGETS` |  |
 
 ## 五、db.js（179 行）
 
