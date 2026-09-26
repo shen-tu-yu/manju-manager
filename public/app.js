@@ -2261,6 +2261,9 @@ async function previewSkill(dir, f) {
 let boardEl = null;
 let boardSaveTimer = null;
 let boardSkillsDone = false;   // skill 树只在第一次打开工作台时拉一次（见 renderBoard 里的注释）
+let boardGen = { state: '', busy: false };   // 生成分镜的进度
+let boardGenLast = null;       // 最近一次切好的分镜（供「查看」）
+let boardGenUndo = null;       // 落条目之前的快照（供「撤销」）
 
 const BOARD_IMAGES_MAX = 12;   // 和 server.js 的 BOARD_IMAGES_MAX 保持一致
 
@@ -2358,6 +2361,8 @@ function buildBoard() {
       <div class="pb-left">
         <div class="pb-gen">
           <button class="btn mini" id="pbGen" title="把剧情 + 勾选的 skill 投给 DeepSeek，让它写分镜">🧠 生成分镜</button>
+          <button class="btn mini" id="pbGenView" style="display:none" title="看看刚生成的分镜（可改完重填）">查看</button>
+          <button class="btn mini" id="pbGenUndo" style="display:none" title="撤销这次生成，回到之前的条目">撤销</button>
           <div class="pb-sub" id="pbGenState"></div>
         </div>
         <label>剧情 / 本轮要求</label>
@@ -2415,6 +2420,8 @@ function buildBoard() {
     toast('投放目标改为：' + siteName(ev.target.value), 'ok');
   };
   boardEl.querySelector('#pbGen').onclick = () => generateStoryboard();
+  boardEl.querySelector('#pbGenView').onclick = () => { if (boardGenLast) openStoryboardReview(boardGenLast); };
+  boardEl.querySelector('#pbGenUndo').onclick = () => undoStoryboard();
 
   // 从素材管理器拖图片进来 → 配给某一条（这次拖拽由工作台接管，不当成"移动到文件夹"）
   boardEl.addEventListener('dragover', (ev) => {
@@ -2690,8 +2697,9 @@ function onDeliverEvent(d) {
         toast('没切出分镜 —— 看看 AI 是不是没按 ### 输出', 'warn', 6000);
         return;
       }
-      setGenState(`收到 ${parts.length} 条分镜`);
-      openStoryboardReview(parts);
+      boardGenLast = parts;
+      setGenState(`收到 ${parts.length} 条分镜，已自动填入（可撤销）`);
+      applyStoryboard(parts, 'replace');       // 自动落条目，不再等你勾选
     } else if (d.state === 'failed') {
       boardGen.busy = false;
       setGenState('取回失败：' + (d.message || ''));
@@ -2715,8 +2723,6 @@ function onDeliverEvent(d) {
 }
 
 /* ---------- 用文本 AI（DeepSeek）生成分镜：投剧情 + skill → 取回 → 按 ### 切条 → 预览挑 ---------- */
-
-let boardGen = { state: '', busy: false };
 
 const BOARD_SPLIT = '###';      // 固定分隔符（用户定的：让 AI 每段以 ### 开头）
 
@@ -2752,6 +2758,40 @@ function setGenState(t) {
   boardGen.state = t || '';
   const el = boardEl && boardEl.querySelector('#pbGenState');
   if (el) el.textContent = boardGen.state;
+}
+
+/** 「查看」「撤销」只在有内容时出现 */
+function syncGenButtons() {
+  const v = boardEl && boardEl.querySelector('#pbGenView');
+  if (v) v.style.display = boardGenLast ? '' : 'none';
+  const u = boardEl && boardEl.querySelector('#pbGenUndo');
+  if (u) u.style.display = boardGenUndo ? '' : 'none';
+}
+
+const cloneItems = (arr) => JSON.parse(JSON.stringify(arr || []));
+
+/** 把切好的分镜落进条目（**自动**；留底供撤销） */
+function applyStoryboard(parts, mode) {
+  const d = boardData();
+  if (!parts || !parts.length) return;
+  const items = parts.map((p) => Object.assign(newBoardItem(), { prompt: p }));
+  boardGenUndo = cloneItems(d.items);
+  if (mode === 'replace') d.items = items;
+  else d.items = d.items.filter((x) => (x.prompt || '').trim() || (x.images || []).length).concat(items);
+  renderBoard();
+  saveBoard(true);
+  syncGenButtons();
+  toast(`已${mode === 'replace' ? '替换为' : '追加'} ${items.length} 条分镜`, 'ok', 4000);
+}
+
+function undoStoryboard() {
+  if (!boardGenUndo) return;
+  boardData().items = boardGenUndo;
+  boardGenUndo = null;
+  renderBoard();
+  saveBoard(true);
+  syncGenButtons();
+  toast('已撤销，回到生成前的条目', 'ok');
 }
 
 async function generateStoryboard() {
@@ -2804,14 +2844,8 @@ function openStoryboardReview(parts) {
   const apply = (mode) => {
     const picked = collect();
     if (!picked.length) return toast('一条都没勾', 'warn');
-    const d = boardData();
-    const items = picked.map((p) => Object.assign(newBoardItem(), { prompt: p }));
-    if (mode === 'replace') d.items = items;
-    else d.items = d.items.filter((x) => (x.prompt || '').trim() || (x.images || []).length).concat(items);
     closeModal();
-    renderBoard();
-    saveBoard(true);
-    toast(`已${mode === 'replace' ? '替换为' : '追加'} ${items.length} 条分镜`, 'ok');
+    applyStoryboard(picked, mode);
   };
   $('#sbReplace').onclick = () => apply('replace');
   $('#sbAppend').onclick = () => apply('append');

@@ -341,27 +341,69 @@
   }
 
   /**
-   * 等文本 AI 把回复吐完，再抓**最后一条**回复的纯文本。
-   * 判定"生成完了"用最土也最稳的办法：内容连续 3 次采样（约 4.5 秒）没变化。
+   * 抓最后一条**正式回答**。
+   * ⚠️ DeepSeek 那种思考模式会先把"思考过程"渲染出来，它也常常是同一个 class，
+   * 所以从后往前找、并跳过 class 里带 think/reason/cot 的容器 —— 否则取回来的可能是一堆内心戏。
    */
-  async function waitForReply(timeoutMs) {
+  function lastReplyText() {
     const sels = (SITE && SITE.reply) || [];
-    const pick = () => {
-      for (const sel of sels) {
-        let nodes = [];
-        try { nodes = document.querySelectorAll(sel); } catch { continue; }
-        if (!nodes.length) continue;
-        const el = nodes[nodes.length - 1];
+    for (const sel of sels) {
+      let nodes = [];
+      try { nodes = document.querySelectorAll(sel); } catch { continue; }
+      if (!nodes.length) continue;
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const el = nodes[i];
+        const cls = String(el.className || '') + ' ' + String((el.parentElement && el.parentElement.className) || '');
+        if (/think|reason|\bcot\b/i.test(cls)) continue;         // 跳过思考过程
         const t = (el.innerText || el.textContent || '').trim();
         if (t) return t;
       }
-      return '';
+    }
+    return '';
+  }
+
+  /** 兜底：找"复制"按钮并点它，截获 copy 事件里的文本（有页面用 clipboard API，截不到就只能靠 DOM） */
+  function findCopyButton() {
+    const words = /复制|copy|拷贝/i;
+    const hits = Array.from(document.querySelectorAll('button, [role="button"], [class*="copy" i]'))
+      .filter((el) => {
+        const t = [el.getAttribute('aria-label') || '', el.getAttribute('title') || '',
+          el.getAttribute('data-testid') || '', el.textContent || ''].join(' ');
+        if (!words.test(t)) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      });
+    return hits.length ? hits[hits.length - 1] : null;
+  }
+
+  async function readByCopyButton() {
+    const btn = findCopyButton();
+    if (!btn) return '';
+    let captured = '';
+    const onCopy = (ev) => {
+      try {
+        const sel = String(window.getSelection() || '');
+        if (sel) captured = sel;
+        if (!captured && ev && ev.clipboardData) captured = ev.clipboardData.getData('text/plain') || '';
+      } catch { /* 忽略 */ }
     };
+    document.addEventListener('copy', onCopy, true);
+    try {
+      btn.click();
+      await sleep(500);
+    } finally {
+      document.removeEventListener('copy', onCopy, true);
+    }
+    return captured.trim();
+  }
+
+  /** 等回复写完：内容连续 3 次采样（约 4.5 秒）没变化就算写完 */
+  async function waitForReply(timeoutMs) {
     const t0 = Date.now();
     let last = '', stable = 0;
     while (Date.now() - t0 < timeoutMs) {
       await sleep(1500);
-      const cur = pick();
+      const cur = lastReplyText();
       if (cur && cur === last) {
         stable++;
         if (stable >= 3 && cur.length > 10) return cur;
@@ -431,7 +473,12 @@
         msg = `已投剧情（${String(task.text || '').length} 字）+ ${files}/${plan.length} 个 skill，已发送`
           + (failed.length ? `；没投进去：${failed.join('、')}` : '');
       } else if (task.kind === 'read') {
-        const text = await waitForReply(180000);
+        let text = await waitForReply(180000);
+        // 抓 DOM 抓不到（容器选择器失效）时，退回"点复制按钮 + 截获 copy 事件"
+        if (!text) {
+          log('DOM 没抓到回复，试复制按钮…');
+          text = await readByCopyButton();
+        }
         if (!text) throw new Error('等了三分钟也没抓到回复内容 —— 确认 AI 已经开始回答');
         ok = true;
         result = text;

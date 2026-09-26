@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 18:10:34
+> 生成时间：2026/9/26 18:22:29
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -14,7 +14,7 @@
 | `db.js` | 179 |
 | `launcher.js` | 236 |
 | `browsers.js` | 211 |
-| `public/app.js` | 3785 |
+| `public/app.js` | 3819 |
 | `public/index.html` | 156 |
 | `public/style.css` | 864 |
 
@@ -137,7 +137,7 @@
 | 2092 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
 | 2139 | `addRoot()` |  |
 
-## 四、前端函数 / 常量（150 个函数）
+## 四、前端函数 / 常量（153 个函数）
 
 | 行 | 名字 | 说明 |
 |---|---|---|
@@ -236,61 +236,64 @@
 | 2147 | `renderSkillNode()` | / |
 | 2180 | `renderSkills()` |  |
 | 2240 | `previewSkill()` | 看一份模板的内容（投放前确认用） |
-| 2275 | `boardData()` |  |
-| 2281 | `saveBoard()` | 存盘（防抖 600ms；传 true 立刻存） |
-| 2293 | `openBoard()` |  |
-| 2321 | `closeBoard()` |  |
-| 2328 | `toggleBoardSize()` | 放大 ↔ 缩小（Esc 就是调它；缩小态是右下小框，能继续接拖进来的图片） |
-| 2341 | `buildBoard()` |  |
-| 2451 | `assignBoardImages()` | / |
-| 2477 | `renderBoardItems()` |  |
-| 2538 | `renderBoard()` |  |
-| 2558 | `renderBoardSecs()` |  |
-| 2571 | `renderBoardSkills()` |  |
-| 2596 | `renderSkillPick()` | skill 选择树（和左侧技能分区同一套层级规则：缩进 + 折叠感） |
-| 2632 | `deliverItem()` | 投放这一条：图 + 提示词入队 |
-| 2655 | `sendItem()` | 让助手脚本去点豆包的发送按钮 |
-| 2667 | `onDeliverEvent()` | 助手脚本的回执（走 SSE）→ 更新对应条目的状态 |
-| 2724 | `buildAskText()` | 组装给文本 AI 的指令：剧情 + 秒数要求 + 输出格式（含分隔符） |
-| 2743 | `splitStoryboard()` | 把 AI 的回复按 ### 切成一条条 |
-| 2751 | `setGenState()` |  |
-| 2757 | `generateStoryboard()` |  |
-| 2779 | `openStoryboardReview()` | 切好的分镜先给用户过一遍：勾选 + 可改 + 选替换还是追加 |
-| 2822 | `showModal()` |  |
-| 2828 | `closeModal()` |  |
-| 2835 | `openSettings()` |  |
-| 2947 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
-| 2960 | `checkMjaInstalled()` | / |
-| 2985 | `dvStatusHTML()` |  |
-| 2992 | `openDeliverPanel()` |  |
-| 3068 | `openHelp()` |  |
-| 3096 | `onSearchInput()` |  |
-| 3108 | `doSearch()` |  |
-| 3129 | `showCtxMenu()` |  |
-| 3189 | `renderCtxMenu()` |  |
-| 3208 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
-| 3241 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
-| 3257 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
-| 3274 | `hideCtxMenu()` |  |
-| 3276 | `revealInExplorer()` |  |
-| 3283 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
-| 3292 | `checkDuplicates()` |  |
-| 3308 | `showDragGhost()` |  |
-| 3317 | `moveDragGhost()` |  |
-| 3323 | `hideDragGhost()` |  |
-| 3327 | `setDropHints()` |  |
-| 3333 | `clearDropTargets()` |  |
-| 3341 | `isFileDrag()` | / |
-| 3358 | `dragKind()` | / |
-| 3369 | `bindEvents()` | / |
-| 3380 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
-| 3410 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
-| 3435 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
-| 3460 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
-| 3511 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
-| 3539 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
-| 3682 | `bindKeyboardEvents()` | / |
-| 3762 | `init()` |  |
+| 2278 | `boardData()` |  |
+| 2284 | `saveBoard()` | 存盘（防抖 600ms；传 true 立刻存） |
+| 2296 | `openBoard()` |  |
+| 2324 | `closeBoard()` |  |
+| 2331 | `toggleBoardSize()` | 放大 ↔ 缩小（Esc 就是调它；缩小态是右下小框，能继续接拖进来的图片） |
+| 2344 | `buildBoard()` |  |
+| 2458 | `assignBoardImages()` | / |
+| 2484 | `renderBoardItems()` |  |
+| 2545 | `renderBoard()` |  |
+| 2565 | `renderBoardSecs()` |  |
+| 2578 | `renderBoardSkills()` |  |
+| 2603 | `renderSkillPick()` | skill 选择树（和左侧技能分区同一套层级规则：缩进 + 折叠感） |
+| 2639 | `deliverItem()` | 投放这一条：图 + 提示词入队 |
+| 2662 | `sendItem()` | 让助手脚本去点豆包的发送按钮 |
+| 2674 | `onDeliverEvent()` | 助手脚本的回执（走 SSE）→ 更新对应条目的状态 |
+| 2730 | `buildAskText()` | 组装给文本 AI 的指令：剧情 + 秒数要求 + 输出格式（含分隔符） |
+| 2749 | `splitStoryboard()` | 把 AI 的回复按 ### 切成一条条 |
+| 2757 | `setGenState()` |  |
+| 2764 | `syncGenButtons()` | 「查看」「撤销」只在有内容时出现 |
+| 2774 | `applyStoryboard()` | 把切好的分镜落进条目（**自动**；留底供撤销） |
+| 2787 | `undoStoryboard()` |  |
+| 2797 | `generateStoryboard()` |  |
+| 2819 | `openStoryboardReview()` | 切好的分镜先给用户过一遍：勾选 + 可改 + 选替换还是追加 |
+| 2856 | `showModal()` |  |
+| 2862 | `closeModal()` |  |
+| 2869 | `openSettings()` |  |
+| 2981 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
+| 2994 | `checkMjaInstalled()` | / |
+| 3019 | `dvStatusHTML()` |  |
+| 3026 | `openDeliverPanel()` |  |
+| 3102 | `openHelp()` |  |
+| 3130 | `onSearchInput()` |  |
+| 3142 | `doSearch()` |  |
+| 3163 | `showCtxMenu()` |  |
+| 3223 | `renderCtxMenu()` |  |
+| 3242 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
+| 3275 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
+| 3291 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
+| 3308 | `hideCtxMenu()` |  |
+| 3310 | `revealInExplorer()` |  |
+| 3317 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
+| 3326 | `checkDuplicates()` |  |
+| 3342 | `showDragGhost()` |  |
+| 3351 | `moveDragGhost()` |  |
+| 3357 | `hideDragGhost()` |  |
+| 3361 | `setDropHints()` |  |
+| 3367 | `clearDropTargets()` |  |
+| 3375 | `isFileDrag()` | / |
+| 3392 | `dragKind()` | / |
+| 3403 | `bindEvents()` | / |
+| 3414 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
+| 3444 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
+| 3469 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
+| 3494 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
+| 3545 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
+| 3573 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
+| 3716 | `bindKeyboardEvents()` | / |
+| 3796 | `init()` |  |
 
 ### 前端顶层常量
 
@@ -319,12 +322,13 @@
 | 351 | `lazyObs` |  |
 | 2139 | `skillByName` |  |
 | 2140 | `skillCount` |  |
-| 2265 | `BOARD_IMAGES_MAX` |  |
-| 2267 | `newBoardItem` |  |
-| 2273 | `boardImageCount` | 整块板子上总共配了多少张图 |
-| 2721 | `BOARD_SPLIT` |  |
-| 2937 | `DELIVER_TARGETS` |  |
-| 2944 | `siteName` | 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） |
+| 2268 | `BOARD_IMAGES_MAX` |  |
+| 2270 | `newBoardItem` |  |
+| 2276 | `boardImageCount` | 整块板子上总共配了多少张图 |
+| 2727 | `BOARD_SPLIT` | ---------- 用文本 AI（DeepSeek）生成分镜：投剧情 + skill → 取回 → 按 ### 切条 → 预览挑 -----… |
+| 2771 | `cloneItems` |  |
+| 2971 | `DELIVER_TARGETS` |  |
+| 2978 | `siteName` | 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） |
 
 ## 五、db.js（179 行）
 

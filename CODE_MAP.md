@@ -331,8 +331,15 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
 - **指令由前端组装**（`buildAskText`）：剧情 + 「每镜 N 秒」+ 「每段以 `###` 开头，只输出分镜正文」
 - 编排在 `onDeliverEvent` 里：`ask done` → 2.5 秒后入队 `read` → `read done` 带 `result` →
   `splitStoryboard()` 按 `###` 切 → `openStoryboardReview()` 弹预览（勾选 + 可改 + 替换/追加）
-- 脚本侧 `waitForReply()`：抓 `SITE.reply` 里**最后一个**容器，连续 3 次采样（约 4.5 秒）不变才算写完；
-  超时 3 分钟。长文本只回传、**不写进 debug.log**（只记字数）
+- 脚本侧取回：`lastReplyText()` 抓 `SITE.reply` 里**最后一个正式回答** ——
+  ⚠️ 必须**跳过 class 含 think/reason/cot 的容器**（DeepSeek 的思考过程也是同一层 class，
+  不过滤就会把一堆内心戏当成分镜取回来）；抓不到时退回「点复制按钮 + 截获 copy 事件」
+  （注意：页面若用 `navigator.clipboard.writeText()` 则不触发 copy 事件，所以它只是兜底）。
+  `waitForReply()` 连续 3 次采样（约 4.5 秒）不变才算写完，超时 3 分钟
+- **切好的分镜自动落进条目**（`applyStoryboard`，默认替换），并在 `boardGenUndo` 留底：
+  工作台上有「查看」（打开预览改完重填）和「撤销」（回到生成前的条目）两个按钮，
+  这样既不用手工勾选、又不会一失手丢掉旧条目
+- 长文本只回传、**不写进 debug.log**（只记字数）
 - **skill 是组合投放的**（一次勾几个就投几个）：`files` 数组一路传到底 ——
   工作台多选 → 后端上限 **20** → 脚本 `for (const f of plan)` 逐个注入、每次间隔 400ms。
   三条必须守住的规矩：
