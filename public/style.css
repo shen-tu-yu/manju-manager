@@ -251,7 +251,9 @@ select:hover { color: var(--text); border-color: #3a4352; }
   padding: 9px 12px; border-bottom: 1px solid var(--border);
   font-size: 12.5px; color: var(--text); flex: 0 0 auto;
 }
-.log-list { overflow-y: auto; padding: 6px; }
+/* ⚠️ flex 列里的滚动区：必须写 `flex: 1 1 auto` + `min-height: 0`，否则内容一多就被撑高、
+   不产生内部滚动（"滚轮坏了"）。同一条死规矩见 .pb-body 那段注释 */
+.log-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; padding: 6px; }
 .log-item { display: flex; gap: 8px; padding: 7px 8px; border-radius: 6px; }
 .log-item:hover { background: var(--panel-3); }
 .log-time {
@@ -690,7 +692,7 @@ body.dragging { cursor: grabbing; }
   width: 560px; max-width: calc(100vw - 48px);
   background: var(--panel-2); border: 1px solid var(--accent);
   border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
-  overflow: hidden; animation: ig-in .18s ease-out;
+  overflow: auto; animation: ig-in .18s ease-out;   /* auto：卡片被拉小时内容还能滚（overflow:hidden 会直接裁掉） */
 }
 @keyframes ig-in {
   from { opacity: 0; transform: scale(.97); }
@@ -839,7 +841,7 @@ body.dragging { cursor: grabbing; }
 .sbr-node.warn { color: #e0b050; }
 .sbr-node.textmode { color: #7fb2ff; }   /* 📝 文本模式：不是警告，是说明 */
 #sbrText {
-  flex: 1 1 auto; min-height: 110px; margin: 0; border: 0; border-radius: 0;
+  flex: 1 1 auto; min-height: 46px; margin: 0; border: 0; border-radius: 0;
   background: #0f1115; color: #d6e0ee; padding: 10px 12px;
   font: 12.5px/1.75 Consolas, "Microsoft YaHei UI", monospace;
   white-space: pre-wrap; word-break: break-word; resize: none;
@@ -883,7 +885,15 @@ body.dragging { cursor: grabbing; }
 .sb-row input { width: auto; margin-top: 6px; }
 .sb-row textarea { width: 100%; height: 62px; resize: vertical; font-size: 12.5px; }
 
-.pb-body { flex: 1 1 auto; display: grid; grid-template-columns: 330px 1fr; min-height: 0; }
+/* ⚠️ 滚动区的死规矩（真实踩过"分镜条目滚不动"）：
+   flex / grid **列方向**容器里的滚动区，必须同时给 `min-height: 0` ——
+   子项的 min-height 默认是 auto，内容一多它就把容器**撑高**而不是内部滚动，
+   多出来的部分再被 .pboard 的 overflow:hidden 裁掉，看起来就像"滚轮坏了"。
+   （左栏 .pb-left 有 overflow:auto，按规范 min-height 自动算 0，所以左栏一直能滚、右栏不能） */
+.pb-body {
+  flex: 1 1 auto; display: grid; grid-template-columns: 330px 1fr;
+  grid-template-rows: minmax(0, 1fr); min-height: 0;
+}
 .pboard.small .pb-body { grid-template-columns: 1fr; }
 .pb-left { border-right: 1px solid var(--border); padding: 10px 12px; overflow: auto; display: flex; flex-direction: column; gap: 3px; }
 .pboard.small .pb-left { display: none; }
@@ -901,9 +911,12 @@ body.dragging { cursor: grabbing; }
 .pb-skill-row.pick:hover { background: #21252e; color: var(--text); }
 .pb-skill-row input { width: auto; }
 
-.pb-right { display: flex; flex-direction: column; min-width: 0; }
+.pb-right { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .pb-items-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
-.pb-items { flex: 1 1 auto; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 7px; }
+.pb-items {
+  flex: 1 1 auto; overflow: auto; min-height: 0;      /* min-height:0 = 真正能滚，见上面那条死规矩 */
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 7px;
+}
 .pb-item {
   display: grid; grid-template-columns: 24px 1fr auto; gap: 9px; align-items: start;
   background: #1b1f27; border: 1px solid var(--border); border-radius: 9px; padding: 8px;

@@ -630,6 +630,17 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
      `querySelectorAll('h1..h6')` 找不到标题 → 取回半篇、或 `###` 补不回来
    诊断（每次 read 都进 debug.log）：`等待判据 / 生成状态 + 停止按钮找到没 / 复制按钮 /
    innerText vs textContent 长度差（差得多=有内容没渲染）/ 容器位置 / 标题标签 / 含不含 ###`
+12. **"滚轮滚不动"十有八九是 flex/grid 的 `min-height: auto`** ——
+   flex / grid **列方向**容器里的滚动区，子项 `min-height` 默认是 `auto`：内容一多它把容器**撑高**，
+   而不是产生内部滚动；多出来的部分再被外层 `overflow: hidden` 裁掉 —— 现象就是"滚轮坏了"。
+   **规矩：列方向容器里的滚动区 = `flex: 1 1 auto` + `overflow: auto` + `min-height: 0`**
+   （行方向换成 `min-width: 0`）；grid 容器还要 `grid-template-rows: minmax(0, 1fr)`。
+   **真实踩过**：工作台"分镜条目"滚不动 —— `.pb-right` / `.pb-items` 都少了 `min-height: 0`，
+   `.pb-body` 也少了 `minmax(0,1fr)`。旁证很能说明问题：左栏 `.pb-left` 有 `overflow: auto`，
+   按规范它的 `min-height` 自动算 0 —— 所以当时**左边能滚、右边不能**，正好对上现象。
+   顺着这条规矩全表扫了一遍（`overflow: auto` 的规则逐个查），又逮到日志列表 `.log-list` 同一个毛病。
+   ⚠️ 观察项：主界面的 `#content` / `.side-scroll` 也是"flex 子项 + overflow:auto"，
+   但它们靠**整页滚动**（实测没坏）—— 要改成区域内滚，同样加 `min-height: 0`。
 8. **脚本绝不能在 iframe 里干活，但也绝不能在 UserScript 头加 `@noframes`** —— 两个方向都会坏：
    - **不禁 iframe 会坏**：豆包对话页里内嵌 `/drive-iframe/drive/home/`，篡改猴默认把脚本注入**所有 frame**，
      iframe 里那个实例一样轮询、一样抢任务，抢到就必然失败。诊断里 `路径 /drive-iframe/...`

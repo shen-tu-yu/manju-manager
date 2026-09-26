@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 19:46:01
+> 生成时间：2026/9/26 20:01:31
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -16,7 +16,7 @@
 | `browsers.js` | 211 |
 | `public/app.js` | 4623 |
 | `public/index.html` | 156 |
-| `public/style.css` | 967 |
+| `public/style.css` | 980 |
 
 ## 二、后端路由（49 个分支，全在 `http.createServer` 里）
 
