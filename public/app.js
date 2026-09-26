@@ -2466,7 +2466,10 @@ function buildBoard() {
         <textarea id="pbScript" spellcheck="false" placeholder="例：第 3 集，无双割草 30 秒打斗，主角用剑，场景在竹林…"></textarea>
         <label>每个镜头的秒数（会写进给 AI 的要求里）</label>
         <div class="pb-secs" id="pbSecs"></div>
-        <label>投放哪些 skill（提示词模板）</label>
+        <div class="pb-skill-head">
+          <label>投放哪些 skill（提示词模板）</label>
+          <button class="pb-mini" id="pbSkillClear" title="取消所有勾选（同一个对话投过一次，就不用再投了）">清空勾选</button>
+        </div>
         <div class="pb-skills" id="pbSkills"></div>
       </div>
       <div class="pb-right">
@@ -2527,6 +2530,16 @@ function buildBoard() {
   };
   boardEl.querySelector('#pbGen').onclick = () => generateStoryboard();
   boardEl.querySelector('#pbGenTpl').onclick = () => openAskTemplateEditor();
+  boardEl.querySelector('#pbSkillClear').onclick = () => {
+    const d = boardData();
+    if (!d.skills.length) return toast('现在没有勾选 skill', 'warn');
+    d.skills = [];
+    // 树是从接口渲染出来的，这里直接取消勾选、不重新拉接口
+    boardEl.querySelectorAll('#pbSkills input[type=checkbox]').forEach((cb) => { cb.checked = false; });
+    updateBoardSub();
+    saveBoard(true);
+    toast('已清空 skill 勾选 —— 同一个对话投过一次就不用再投了', 'ok', 4200);
+  };
   boardEl.querySelector('#pbRaw').onclick = () => openRawWindow();
   boardEl.querySelector('#pbGenView').onclick = () => { if (boardGenLast) openStoryboardReview(boardGenLast); };
   boardEl.querySelector('#pbGenUndo').onclick = () => undoStoryboard();
@@ -2650,17 +2663,23 @@ function renderBoardItems() {
   });
 }
 
+/** 工作台标题栏那行小字（条数 / 秒数 / 配图 / skill）—— 只有这一处实现 */
+function updateBoardSub() {
+  if (!boardEl) return;
+  const d = boardData();
+  const sub = boardEl.querySelector('#pbSub');
+  if (!sub) return;
+  sub.textContent = `${d.items.length} 条 · ${d.seconds}s`
+    + ` · 配图 ${boardImageCount()} 张`
+    + (d.skills.length ? ` · skill ${d.skills.length}` : '');
+}
+
 function renderBoard() {
   if (!boardEl) return;
   const d = boardData();
   boardEl.classList.toggle('big', !!d.big);
   boardEl.classList.toggle('small', !d.big);
-  const sub = boardEl.querySelector('#pbSub');
-  if (sub) {
-    sub.textContent = `${d.items.length} 条 · ${d.seconds}s`
-      + ` · 配图 ${boardImageCount()} 张`
-      + (d.skills.length ? ` · skill ${d.skills.length}` : '');
-  }
+  updateBoardSub();
   renderBoardSecs();
   renderBoardPreset();
   renderBoardItems();
@@ -2750,11 +2769,7 @@ function renderSkillPick(parent, node, depth, dir, chosen) {
       if (ev.target.checked) dd.skills.push({ dirId: dir.id, rel: f.rel });
       else dd.skills = dd.skills.filter((s) => !(s.dirId === dir.id && s.rel === f.rel));
       saveBoard();
-      const sub = boardEl.querySelector('#pbSub');
-      if (sub) {
-        sub.textContent = `${dd.items.length} 条 · ${dd.seconds}s`
-          + ` · 配图 ${boardImageCount()} 张 · skill ${dd.skills.length}`;
-      }
+      updateBoardSub();
     };
     parent.appendChild(row);
   }

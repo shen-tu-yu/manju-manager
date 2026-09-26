@@ -977,3 +977,7 @@ body.dragging { cursor: grabbing; }
 .pboard.small .pb-prompt textarea { height: 42px; font-size: 11.5px; }
 .pboard.small .pb-items-head { padding: 6px 10px; }
 .pboard.small .pb-foot { display: none; }
+
+/* 投放哪些 skill：标题 + 清空按钮一行 */
+.pb-skill-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.pb-skill-head label { margin: 0; }
