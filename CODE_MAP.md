@@ -256,8 +256,13 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
 
 判据**只有一处** `dragKind(ev)`，三个 handler 都调它。详见踩坑 ⑦。
 
-### 3.8 投放素材助手（把素材丢进豆包 / Pavo）
+### 3.8 投放素材助手（把素材丢进豆包 / DeepSeek / Pavo）
 
+- **脚本一份、三个站通用**，所以界面也只能是"一份"：`openDeliverPanel()` **不带参数** ——
+  面板里一个平台下拉（`#dvSite`，选择记在 localStorage `fm-deliver-site`）+ **唯一一个「打开」按钮**；
+  安装状态和 4 步说明通用一份，装好后 `<details>` **自动折叠**
+- ⚠️ 别再退回"每个平台一个菜单项 → 各自面板 → 各自「打开 XXX」按钮"的老结构 ——
+  脚本既然通用，那样就是三份冗余（用户已经提过）
 - 平台表：app.js 顶部的 `DELIVER_TARGETS` —— **加平台就往这张表加一行**
 - 面板 `openDeliverPanel(t)` 的文案全部走 `t.name`；安装 4 步与平台无关
 - 安装检测：`checkMjaInstalled()` 用隐藏 iframe 加载 `/tools/probe.html`，读它的

@@ -2977,15 +2977,12 @@ const DELIVER_TARGETS = [
 /** 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） */
 const siteName = (id) => (DELIVER_TARGETS.find((t) => t.id === id) || { name: '豆包' }).name;
 
-/** 点左侧栏按钮 → 弹出平台菜单 */
-function openDeliverMenu(anchor) {
-  const r = anchor.getBoundingClientRect();
-  const items = [{ label: '投放到哪个平台', disabled: true }, { sep: true }];
-  for (const t of DELIVER_TARGETS) {
-    items.push({ label: `${t.icon} ${t.name}`, fn: () => openDeliverPanel(t) });
-  }
-  renderCtxMenu($('#ctxMenu'), r.left, r.top - 10, items);
-}
+/** 记住上次选的投放平台（脚本一份通用，选哪个只是决定"打开"按钮开谁） */
+const DELIVER_KEY = 'fm-deliver-site';
+const deliverSite = () => {
+  const saved = localStorage.getItem(DELIVER_KEY);
+  return DELIVER_TARGETS.some((t) => t.id === saved) ? saved : DELIVER_TARGETS[0].id;
+};
 
 /**
  * 用 iframe 加载探针页，检查篡改猴脚本有没有在本地页面挂上「已安装」标记。
@@ -3016,64 +3013,88 @@ function checkMjaInstalled() {
   });
 }
 
-function dvStatusHTML(ok, siteName) {
-  const n = siteName || '目标站';
-  return ok
-    ? `<b>✅ 已经装好了</b><span>直接打开${esc(n)}就能用：右上角会出现蓝色「📁 素材」</span>`
-    : '<b>⚠️ 还没装好</b><span>照下面 4 步做一遍，大约 2 分钟</span>';
-}
-
-async function openDeliverPanel(t) {
+/**
+ * 投放素材助手面板 —— **一份脚本三个站通用**，所以这里不再"每个平台一个面板、各一个打开按钮"：
+ * 上面一个平台下拉 + **唯一一个「打开」按钮**，下面通用一份安装步骤（装好了自动折叠起来）。
+ */
+function openDeliverPanel() {
+  const opts = DELIVER_TARGETS.map((t) => `<option value="${t.id}">${t.icon} ${esc(t.name)}</option>`).join('');
   showModal(`
-    <h3>📤 投放素材助手 · ${esc(t.name)}</h3>
-    <div class="modal-sub">
-      在${esc(t.name)}页面加一个素材侧边栏 —— 从你的素材库点一下，文件直接进${esc(t.name)}的输入框。
+    <h3>📤 投放素材助手</h3>
+    <div class="modal-sub">一份脚本，<b>豆包 / DeepSeek / Pavo 三个站通用</b> —— 装一次哪儿都能用</div>
+
+    <div class="dv-openrow">
+      <select id="dvSite" title="打开哪个站点">${opts}</select>
+      <button class="btn primary" id="dvOpen">打开</button>
     </div>
 
     <div class="dv-status" id="dvStatus"><b>正在检测…</b><span>稍等一秒</span></div>
+    <div id="dvSteps"></div>
 
-    <div class="dv-steps">
-      <div class="dv-step"><span class="dv-n">1</span><div>
-        <b>复制脚本代码</b>
-        <span>点下面那个蓝色的【📋 复制脚本代码】按钮，代码就进剪贴板了</span>
-      </div></div>
-      <div class="dv-step"><span class="dv-n">2</span><div>
-        <b>打开篡改猴</b>
-        <span>Edge 右上角那个拼图图标 → 点 <code>篡改猴</code>（Tampermonkey）→ <code>管理面板</code></span>
-      </div></div>
-      <div class="dv-step"><span class="dv-n">3</span><div>
-        <b>粘贴并保存</b>
-        <span>点 <code>➕ 添加新脚本</code> → 在编辑区按 <code>Ctrl+A</code> <b>全选</b> → <code>Ctrl+V</code> 粘贴 → <code>Ctrl+S</code> 保存<br>
-        <span style="color:#f5b544">⚠️ 一定要先 Ctrl+A 全选覆盖掉默认模板，否则脚本会失效</span></span>
-      </div></div>
-      <div class="dv-step"><span class="dv-n">4</span><div>
-        <b>回来验证</b>
-        <span>点下面的【🔍 重新检测】—— 上面那行变成绿色的「✅ 已经装好了」就成了</span>
-      </div></div>
-    </div>
-
-    <div style="margin-top:18px;font-size:12px;color:var(--text-faint);line-height:1.8">
-      <b style="color:var(--text-dim)">装好之后怎么用：</b><br>
-      打开${esc(t.name)} → 页面<b>右上角</b>点蓝色「📁 素材」→ 侧边栏滑出 → <b>点一下素材</b>，文件就进${esc(t.name)}的输入框了。<br>
-      面板<b>抓标题栏可拖到任意位置</b>、<b>左边缘拖宽度</b>、标题栏 <b>－ / ＋</b> 调预览图大小、<b>⌂</b> 复位；位置和大小会记住。<br>
-      素材是缩略图，看画面就知道是什么。
+    <div style="margin-top:14px;font-size:12px;color:var(--text-faint);line-height:1.8">
+      <b style="color:var(--text-dim)">怎么用：</b>打开站点 → 页面<b>右上角</b>点蓝色「📁 素材」→ 侧边栏滑出 →
+      点一下素材（或从资源管理器拖文件进去）。<br>
+      侧栏<b>抓标题栏可拖动</b>、<b>左边缘调宽</b>、<b>－ / ＋</b> 调预览图大小、<b>⌂</b> 复位，位置会记住。<br>
+      工作台里的「🧠 生成分镜」走 <b>DeepSeek</b>；图片 + 提示词生成视频走 <b>豆包 / Pavo</b>。
     </div>
 
     <div class="modal-actions">
       <button class="btn" id="dvCheck">🔍 重新检测</button>
-      <button class="btn" id="dvOpen">打开${esc(t.name)}</button>
-      <button class="btn primary" id="dvCopy">📋 复制脚本代码</button>
+      <button class="btn" id="dvCopy">📋 复制脚本代码</button>
     </div>
   `);
+
+  const sel = $('#dvSite');
+  sel.value = deliverSite();
+  const refreshOpen = () => { $('#dvOpen').textContent = '打开 ' + siteName(sel.value); };
+  refreshOpen();
+  sel.onchange = () => {
+    localStorage.setItem(DELIVER_KEY, sel.value);
+    refreshOpen();
+  };
+  $('#dvOpen').onclick = () => {
+    const t = DELIVER_TARGETS.find((x) => x.id === sel.value) || DELIVER_TARGETS[0];
+    window.open(t.url, '_blank');
+  };
+
+  const stepsHTML = () => `
+    <details class="dv-details">
+      <summary>安装步骤（约 2 分钟，装一次三个站通用）</summary>
+      <div class="dv-step"><span class="dv-n">1</span><div>
+        <b>复制脚本代码</b>
+        <span>点下面蓝色的【📋 复制脚本代码】，代码就进剪贴板</span>
+      </div></div>
+      <div class="dv-step"><span class="dv-n">2</span><div>
+        <b>打开篡改猴</b>
+        <span>Edge 右上角拼图图标 → <code>篡改猴</code>（Tampermonkey）→ <code>管理面板</code></span>
+      </div></div>
+      <div class="dv-step"><span class="dv-n">3</span><div>
+        <b>粘贴并保存</b>
+        <span><code>➕ 添加新脚本</code> → 编辑区 <code>Ctrl+A</code> <b>全选</b> → <code>Ctrl+V</code> → <code>Ctrl+S</code><br>
+        <span style="color:#f5b544">⚠️ 一定要先 Ctrl+A 覆盖掉默认模板，否则脚本会失效</span></span>
+      </div></div>
+      <div class="dv-step"><span class="dv-n">4</span><div>
+        <b>回来验证</b>
+        <span>点【🔍 重新检测】，上面那行变成绿色「✅ 已经装好了」就成了</span>
+      </div></div>
+    </details>`;
 
   const box = $('#dvStatus');
   const setStatus = (ok, checking) => {
     box.className = 'dv-status' + (checking ? '' : ok ? ' ok' : ' no');
-    box.innerHTML = checking ? '<b>正在检测…</b><span>稍等一秒</span>' : dvStatusHTML(ok, t.name);
+    box.innerHTML = checking
+      ? '<b>正在检测…</b><span>稍等一秒</span>'
+      : ok
+        ? '<b>✅ 已经装好了</b><span>打开上面选的站点，右上角会出现蓝色「📁 素材」</span>'
+        : '<b>⚠️ 还没装好</b><span>展开下面步骤做一遍，大约 2 分钟</span>';
+    // 装好了就把步骤折叠收起来，别占地方
+    $('#dvSteps').innerHTML = checking ? '' : stepsHTML();
+    const det = $('#dvSteps details');
+    if (det) det.open = !ok;
   };
 
   setStatus(false, true);
-  setStatus(await checkMjaInstalled());
+  checkMjaInstalled().then((ok) => setStatus(ok));
 
   $('#dvCheck').onclick = async () => {
     setStatus(false, true);
@@ -3081,8 +3102,6 @@ async function openDeliverPanel(t) {
     setStatus(ok);
     toast(ok ? '✅ 检测到脚本已安装' : '还没检测到 —— 确认脚本保存了，并且是「启用」状态', ok);
   };
-
-  $('#dvOpen').onclick = () => window.open(t.url, '_blank');
 
   $('#dvCopy').onclick = async () => {
     const btn = $('#dvCopy');
@@ -3472,11 +3491,8 @@ function bindNavEvents() {
   $('#btnTrash').onclick = openTrash;
   $('#btnSettings').onclick = openSettings;
   $('#btnHelp').onclick = openHelp;
-  // 投放素材助手：点一下弹出平台菜单（stopPropagation 防止被"点外部关闭"立刻收掉）
-  $('#btnDeliver').onclick = (ev) => {
-    ev.stopPropagation();
-    openDeliverMenu($('#btnDeliver'));
-  };
+  // 投放素材助手：直接开面板（脚本一份三站通用，不再走"先选平台"那一层菜单）
+  $('#btnDeliver').onclick = () => openDeliverPanel();
   $('#btnNewFolderSide').onclick = () => { if (!S.rootId) return toast('请先添加文件夹', 'warn'); newFolderHere(); };
 
   $('#searchInput').oninput = onSearchInput;

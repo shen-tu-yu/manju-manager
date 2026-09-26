@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 18:22:29
+> 生成时间：2026/9/26 18:27:38
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -14,9 +14,9 @@
 | `db.js` | 179 |
 | `launcher.js` | 236 |
 | `browsers.js` | 211 |
-| `public/app.js` | 3819 |
+| `public/app.js` | 3835 |
 | `public/index.html` | 156 |
-| `public/style.css` | 864 |
+| `public/style.css` | 881 |
 
 ## 二、后端路由（49 个分支，全在 `http.createServer` 里）
 
@@ -137,7 +137,7 @@
 | 2092 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
 | 2139 | `addRoot()` |  |
 
-## 四、前端函数 / 常量（153 个函数）
+## 四、前端函数 / 常量（151 个函数）
 
 | 行 | 名字 | 说明 |
 |---|---|---|
@@ -262,38 +262,36 @@
 | 2856 | `showModal()` |  |
 | 2862 | `closeModal()` |  |
 | 2869 | `openSettings()` |  |
-| 2981 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
-| 2994 | `checkMjaInstalled()` | / |
-| 3019 | `dvStatusHTML()` |  |
-| 3026 | `openDeliverPanel()` |  |
-| 3102 | `openHelp()` |  |
-| 3130 | `onSearchInput()` |  |
-| 3142 | `doSearch()` |  |
-| 3163 | `showCtxMenu()` |  |
-| 3223 | `renderCtxMenu()` |  |
-| 3242 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
-| 3275 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
-| 3291 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
-| 3308 | `hideCtxMenu()` |  |
-| 3310 | `revealInExplorer()` |  |
-| 3317 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
-| 3326 | `checkDuplicates()` |  |
-| 3342 | `showDragGhost()` |  |
-| 3351 | `moveDragGhost()` |  |
-| 3357 | `hideDragGhost()` |  |
-| 3361 | `setDropHints()` |  |
-| 3367 | `clearDropTargets()` |  |
-| 3375 | `isFileDrag()` | / |
-| 3392 | `dragKind()` | / |
-| 3403 | `bindEvents()` | / |
-| 3414 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
-| 3444 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
-| 3469 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
-| 3494 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
-| 3545 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
-| 3573 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
-| 3716 | `bindKeyboardEvents()` | / |
-| 3796 | `init()` |  |
+| 2991 | `checkMjaInstalled()` | / |
+| 3020 | `openDeliverPanel()` | / |
+| 3121 | `openHelp()` |  |
+| 3149 | `onSearchInput()` |  |
+| 3161 | `doSearch()` |  |
+| 3182 | `showCtxMenu()` |  |
+| 3242 | `renderCtxMenu()` |  |
+| 3261 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
+| 3294 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
+| 3310 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
+| 3327 | `hideCtxMenu()` |  |
+| 3329 | `revealInExplorer()` |  |
+| 3336 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
+| 3345 | `checkDuplicates()` |  |
+| 3361 | `showDragGhost()` |  |
+| 3370 | `moveDragGhost()` |  |
+| 3376 | `hideDragGhost()` |  |
+| 3380 | `setDropHints()` |  |
+| 3386 | `clearDropTargets()` |  |
+| 3394 | `isFileDrag()` | / |
+| 3411 | `dragKind()` | / |
+| 3422 | `bindEvents()` | / |
+| 3433 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
+| 3463 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
+| 3488 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
+| 3510 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
+| 3561 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
+| 3589 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
+| 3732 | `bindKeyboardEvents()` | / |
+| 3812 | `init()` |  |
 
 ### 前端顶层常量
 
@@ -329,6 +327,8 @@
 | 2771 | `cloneItems` |  |
 | 2971 | `DELIVER_TARGETS` |  |
 | 2978 | `siteName` | 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） |
+| 2981 | `DELIVER_KEY` | 记住上次选的投放平台（脚本一份通用，选哪个只是决定"打开"按钮开谁） |
+| 2982 | `deliverSite` |  |
 
 ## 五、db.js（179 行）
 
