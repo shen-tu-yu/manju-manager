@@ -2008,10 +2008,17 @@ async function openIngestCard(item) {
 
 /* ===================== 目录选择器（添加文件夹） ===================== */
 
-function openAddRootDialog(startPath) {
+/**
+ * 目录选择器：mode='root' 加素材根目录；mode='skill' 挂载技能（提示词模板）目录。
+ * 两个用途共用同一个对话框，只是提交的接口不同（同一动作不要写两个实现）。
+ */
+function openAddRootDialog(startPath, mode) {
+  const isSkill = mode === 'skill';
   showModal(`
-    <h3>添加要管理的文件夹</h3>
-    <div class="modal-sub">在网页里能访问的路径被限制在添加的文件夹内，其他位置无法访问</div>
+    <h3>${isSkill ? '挂载技能目录（提示词模板）' : '添加要管理的文件夹'}</h3>
+    <div class="modal-sub">${isSkill
+      ? '这个目录只放提示词模板（.md / .txt）。它不进素材树、不会被收件箱监听、回收站也不会在里面建东西'
+      : '在网页里能访问的路径被限制在添加的文件夹内，其他位置无法访问'}</div>
     <div class="picker-path" id="pkPath">读取中…</div>
     <div class="drive-grid" id="pkDrives"></div>
     <div class="picker-list" id="pkList" style="margin-top:10px">加载中…</div>
@@ -2019,7 +2026,7 @@ function openAddRootDialog(startPath) {
     <input type="text" id="pkName" placeholder="留空则用文件夹名">
     <div class="modal-actions">
       <button class="btn" data-close>取消</button>
-      <button class="btn primary" id="pkOk">添加这个文件夹</button>
+      <button class="btn primary" id="pkOk">${isSkill ? '挂载这个目录' : '添加这个文件夹'}</button>
     </div>
   `);
 
@@ -2086,6 +2093,13 @@ function openAddRootDialog(startPath) {
     if (!cur) return toast('请先选择一个文件夹', 'warn');
     try {
       const name = $('#pkName').value.trim();
+      if (isSkill) {
+        await apiPost('/api/skills', { path: cur, name: name || undefined });
+        closeModal();
+        await renderSkills();
+        toast('已挂载技能目录：' + (name || cur), 'ok');
+        return;
+      }
       const r = await apiPost('/api/roots', { path: cur, name: name || undefined });
       await reloadConfig();
       S.rootId = r.root.id;
@@ -2095,6 +2109,91 @@ function openAddRootDialog(startPath) {
       toast('已添加：' + r.root.name, 'ok');
     } catch (e) { toast(e.message, 'err'); }
   };
+}
+
+/* ===================== 技能（提示词模板） =====================
+ * 左侧「技能」分区：挂载的目录 + 里面可投放的模板文件。
+ * 这些目录和素材根目录是两回事（见 CODE_MAP 2.5），互不干扰。
+ */
+
+async function renderSkills() {
+  const box = $('#skillList');
+  if (!box) return;
+  box.innerHTML = '<div class="tree-row dim">加载中…</div>';
+  let data;
+  try { data = await api('/api/skills'); }
+  catch (e) { box.innerHTML = `<div class="tree-row dim">${esc(e.message)}</div>`; return; }
+
+  const dirs = data.dirs || [];
+  box.innerHTML = '';
+  if (!dirs.length) {
+    box.innerHTML = `<div class="skill-empty">还没挂载技能目录<br>
+      <span>点右上角 ＋ 选一个放提示词模板（.md / .txt）的文件夹</span></div>`;
+    return;
+  }
+
+  for (const d of dirs) {
+    const wrap = document.createElement('div');
+    wrap.className = 'skill-dir';
+
+    const head = document.createElement('div');
+    head.className = 'tree-row skill-head';
+    head.innerHTML = `<span class="tname" title="${esc(d.path)}">📚 ${esc(d.name)}</span>`
+      + '<span class="spacer"></span>'
+      + (d.exists ? `<span class="tcount">${d.files.length}</span>` : '<span class="skill-bad">目录不存在</span>')
+      + '<button class="skill-x" title="移除这个技能目录">×</button>';
+    head.querySelector('.skill-x').onclick = async (ev) => {
+      ev.stopPropagation();
+      if (!confirm(`移除技能目录「${d.name}」？\n（只是解除挂载，里面的文件一个都不会动）`)) return;
+      try {
+        await api('/api/skills/' + encodeURIComponent(d.id), { method: 'DELETE' });
+        toast('已移除挂载', 'ok');
+        renderSkills();
+      } catch (e) { toast(e.message, 'err'); }
+    };
+    wrap.appendChild(head);
+
+    if (d.exists && d.files.length) {
+      const ul = document.createElement('div');
+      ul.className = 'skill-files';
+      for (const f of d.files) {
+        const row = document.createElement('div');
+        row.className = 'skill-file';
+        row.title = f.rel;
+        row.innerHTML = `<span class="sname">📄 ${esc(f.rel)}</span><span class="ssize">${fmtSize(f.size)}</span>`;
+        row.onclick = () => previewSkill(d, f);
+        ul.appendChild(row);
+      }
+      wrap.appendChild(ul);
+      if (d.files.length >= (data.maxFiles || 300)) {
+        const more = document.createElement('div');
+        more.className = 'skill-empty-in';
+        more.textContent = `（只列出前 ${data.maxFiles} 个）`;
+        wrap.appendChild(more);
+      }
+    } else if (d.exists) {
+      const e = document.createElement('div');
+      e.className = 'skill-empty-in';
+      e.textContent = `（没有可投放的模板，只认 ${(data.exts || []).join(' / ')}）`;
+      wrap.appendChild(e);
+    }
+    box.appendChild(wrap);
+  }
+}
+
+/** 看一份模板的内容（投放前确认用） */
+async function previewSkill(dir, f) {
+  try {
+    const r = await api(`/api/skills/file?id=${encodeURIComponent(dir.id)}&rel=${encodeURIComponent(f.rel)}`);
+    showModal(`
+      <h3>📄 ${esc(r.rel)}</h3>
+      <div class="modal-sub">来自「${esc(dir.name)}」 · ${fmtSize(r.size)}</div>
+      <pre class="skill-preview">${esc(r.content)}</pre>
+      <div class="modal-actions">
+        <button class="btn" data-close>关闭</button>
+      </div>
+    `);
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 /* ===================== 模态框 ===================== */
@@ -2656,6 +2755,7 @@ function bindEvents() {
 function bindToolbarEvents() {
   // 根
   $('#btnAddRoot').onclick = () => openAddRootDialog();
+  $('#btnAddSkill').onclick = () => openAddRootDialog(null, 'skill');
 
   // 视图
   $('#viewSwitch').onclick = (ev) => {
@@ -3048,7 +3148,8 @@ async function init() {
     showEmpty('还没有添加文件夹', '点左上角的 ＋ 选择要管理的文件夹（可以是任意磁盘位置）', '添加文件夹', openAddRootDialog);
     setStatus('就绪');
   }
-  connectInbox();     // 收件箱：新文件到达时弹「入库卡片」
+  await renderSkills();   // 左侧「技能」分区（提示词模板目录）
+  connectInbox();         // 收件箱：新文件到达时弹「入库卡片」
 }
 
 init();

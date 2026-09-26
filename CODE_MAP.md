@@ -42,6 +42,7 @@
 | 块 | 路由 |
 |---|---|
 | 配置 / 根目录 | `GET·POST /api/config`、`POST /api/roots`、`DELETE /api/roots/:id` |
+| **技能目录** | `GET·POST /api/skills`、`DELETE /api/skills/:id`、`GET /api/skills/file` |
 | **收件箱** | `GET /api/edge`、`GET /api/events`(SSE)、`GET /api/inbox`、`GET /api/inbox/targets`、`POST /api/inbox/ingest` |
 | 磁盘浏览 / 目录 | `GET /api/fs/drives`、`GET /api/fs/dirs`、`GET /api/list`、`GET /api/tree` |
 | 文件读写 | `GET /api/file`、`GET·POST /api/text`、`PUT /api/upload`、`POST /api/mkdir`、`/api/mkdir-template`、`/api/rename`、`/api/rename-batch`、`/api/move`、`/api/copy`、`POST /api/delete` |
@@ -155,6 +156,27 @@
 **四个入口**：`启动.bat` → `launcher.js`（菜单）/ `node launcher.js key=value ...`（直通，给快捷方式用）/
 网页设置（写 `config.browser`，**下次启动生效**）/ `node server.js`（完全跳过启动器）。
 
+### 2.5 技能目录（提示词模板）
+
+**为什么单独存、不和 `config.roots` 混** —— 混进去会连带三个问题：
+① 左侧素材树里冒出 skills 目录；② 收件箱会去 `fs.watch` 它，改个模板就算"新文件"；
+③ 回收站/虚拟分类按根目录工作，会在里面建 `.recycle`（往放提示词的地方塞程序文件）。
+
+所以：**独立表 `skill_dirs`**（db.js）+ **独立接口 `/api/skills*`**，只在读文件时借用
+`resolveSafe(dirPath, rel)` 做越界防护。
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/skills` | 挂载的目录 + 每个目录里可投放的模板文件（带 `exists` 标记） |
+| `POST /api/skills` | 挂载一个目录（同一路径幂等，返回 `existed`） |
+| `DELETE /api/skills/:id` | 移除挂载 —— **只解除，文件一个都不动** |
+| `GET /api/skills/file?id=&rel=` | 读一份模板；非白名单扩展名 → 415，超 `textPreviewBytes` → 413 |
+
+- 白名单 `SKILL_EXT = .md / .txt / .markdown`；递归限深 3 层、最多 300 个文件
+- 前端：「技能」分区的 `renderSkills()` / `previewSkill()`；「＋」复用**同一个目录选择器**
+  `openAddRootDialog(startPath, mode)`（`mode='skill'`）—— 加素材根目录和挂技能目录是同一个对话框，
+  **不要写第二个**
+
 ---
 
 ## 三、前端（`public/app.js`）
@@ -225,6 +247,13 @@
   → 按 `accept` 匹配 → `DataTransfer` 注入 → 失败退回模拟拖放。所以适配新站通常**不用改发送代码**。
 - **加一个新平台 = 四处改动**：`SITES`、UserScript `@match`、`extension/manifest.json` 的 `matches`、
   app.js 的 `DELIVER_TARGETS`。面板标题会显示当前站点（`📁 漫剧素材 · Pavo`），方便确认脚本在哪个站生效。
+
+### 3.9 技能（提示词模板）分区
+
+- `renderSkills()`：拉 `/api/skills` 渲染"目录 + 文件"；目录不存在标 ⚠️，`×` 解除挂载（带确认）
+- `previewSkill(dir, file)`：点文件名弹出内容预览
+- 「＋」→ `openAddRootDialog(null, 'skill')`（**和加素材根目录共用同一个对话框**）
+- `init()` 末尾会调一次 `renderSkills()`
 
 ---
 

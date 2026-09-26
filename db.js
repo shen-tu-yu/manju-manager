@@ -39,6 +39,14 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_vg_root  ON vgroups(root_path);
   CREATE INDEX IF NOT EXISTS idx_vgf_group ON vgroup_files(group_id);
+  -- 技能目录（提示词模板）：与素材根目录分开存，
+  -- 免得素材树里冒出 skills、收件箱去监听它、回收站在里面建 .recycle
+  CREATE TABLE IF NOT EXISTS skill_dirs (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    path       TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+  );
 `);
 
 function tx(fn) {
@@ -61,6 +69,21 @@ function setSettings(obj) {
   const st = db.prepare(
     'INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
   tx(() => { for (const [k, v] of Object.entries(obj)) st.run(k, JSON.stringify(v)); });
+}
+
+/* ---------------- skill_dirs（技能目录） ---------------- */
+
+function getSkillDirs() {
+  return db.prepare('SELECT id, name, path FROM skill_dirs ORDER BY rowid').all();
+}
+
+function addSkillDir(id, name, path) {
+  db.prepare('INSERT OR REPLACE INTO skill_dirs(id,name,path,created_at) VALUES(?,?,?,?)')
+    .run(id, name, path, Date.now());
+}
+
+function removeSkillDir(id) {
+  db.prepare('DELETE FROM skill_dirs WHERE id = ?').run(id);
 }
 
 /* ---------------- roots ---------------- */
@@ -151,4 +174,5 @@ module.exports = {
   getSettings, setSettings,
   getRoots, replaceRoots,
   getVGroups, replaceVGroups,
+  getSkillDirs, addSkillDir, removeSkillDir,
 };
