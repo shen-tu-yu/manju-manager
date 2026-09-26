@@ -195,3 +195,7 @@ for (const f of ['data.db', 'debug.log', 'launcher.json', 'clipboard.log']) {
   if (has && !ignored) console.log(`  ⚠️ ${f} 存在且**没被 .gitignore 忽略** —— git add . 会把它推上去`);
 }
 console.log('（data.db / debug.log / launcher.json 都在 .gitignore 里就安全）');
+
+// 退出码：给 bat / CI 判断用 —— 发现问题 → 1，干净 → 0
+// （「一键上传.bat」就是靠它决定要不要停下来问你）
+process.exit((left || (!FIX && totalHits)) ? 1 : 0);
