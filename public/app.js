@@ -2246,6 +2246,328 @@ async function previewSkill(dir, f) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+/* ===================== 提示词工作台 =====================
+ * 一块板子：写剧情 + 选 skill（模板）+ 定每个镜头秒数 → 分镜条目列表（每条 = 提示词 + 一张配图）。
+ * 形态：放大态（居中大窗）↔ 缩小态（右下小框），**按 Esc 切换**。
+ * 缩小态照样接收从素材管理器拖过来的图片 —— 这正是这个模块的主要用法。
+ * 本期只做"编辑 + 配图 + 存盘"；投放通道（把图/提示词送进豆包、点发送）在下一步接。
+ */
+
+let boardEl = null;
+let boardSaveTimer = null;
+
+const newBoardItem = () => ({
+  id: 'it' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+  prompt: '', image: null, state: '', note: '',
+});
+
+function boardData() {
+  if (!S.board) S.board = { open: false, big: true, script: '', seconds: 10, skills: [], items: [] };
+  return S.board;
+}
+
+/** 存盘（防抖 600ms；传 true 立刻存） */
+function saveBoard(now) {
+  const d = boardData();
+  const payload = {
+    script: d.script, seconds: d.seconds, skills: d.skills,
+    items: d.items.map(({ id, prompt, image, state, note }) => ({ id, prompt, image, state, note })),
+  };
+  const put = () => apiPost('/api/board', payload).catch((e) => toast('工作台保存失败：' + e.message, 'err'));
+  clearTimeout(boardSaveTimer);
+  if (now) return put();
+  boardSaveTimer = setTimeout(put, 600);
+}
+
+async function openBoard() {
+  const d = boardData();
+  d.open = true;
+  if (!boardEl) {
+    try {
+      const saved = await api('/api/board');
+      if (saved && typeof saved === 'object') {
+        d.script = saved.script || '';
+        d.seconds = Number(saved.seconds) || 10;
+        d.skills = Array.isArray(saved.skills) ? saved.skills : [];
+        d.items = (Array.isArray(saved.items) ? saved.items : []).map((it) => ({
+          id: it.id || newBoardItem().id,
+          prompt: it.prompt || '',
+          image: it.image || null,
+          state: it.state || '',
+          note: it.note || '',
+        }));
+      }
+    } catch (e) { toast('读工作台失败：' + e.message, 'err'); }
+    if (!d.items.length) d.items = [newBoardItem()];
+    buildBoard();
+  }
+  boardEl.classList.remove('hidden');
+  boardEl.querySelector('#pbScript').value = d.script;
+  renderBoard();
+}
+
+function closeBoard() {
+  boardData().open = false;
+  if (boardEl) boardEl.classList.add('hidden');
+  saveBoard(true);
+}
+
+/** 放大 ↔ 缩小（Esc 就是调它；缩小态是右下小框，能继续接拖进来的图片） */
+function toggleBoardSize(force) {
+  const d = boardData();
+  d.big = (force == null) ? !d.big : !!force;
+  if (!boardEl) return;
+  boardEl.classList.toggle('big', d.big);
+  boardEl.classList.toggle('small', !d.big);
+  const btn = boardEl.querySelector('#pbSize');
+  if (btn) {
+    btn.textContent = d.big ? '⤡' : '⤢';
+    btn.title = d.big ? '缩小成小框（Esc）' : '放大编辑';
+  }
+}
+
+function buildBoard() {
+  boardEl = document.createElement('div');
+  boardEl.id = 'promptBoard';
+  boardEl.className = 'pboard big';
+  boardEl.innerHTML = `
+    <div class="pb-head">
+      <b>✍️ 提示词工作台</b>
+      <span class="pb-sub" id="pbSub"></span>
+      <span class="spacer"></span>
+      <button class="pb-mini" id="pbSize" title="缩小成小框（Esc）">⤡</button>
+      <button class="pb-mini" id="pbClose" title="关闭">×</button>
+    </div>
+    <div class="pb-body">
+      <div class="pb-left">
+        <label>剧情 / 本轮要求</label>
+        <textarea id="pbScript" spellcheck="false" placeholder="例：第 3 集，无双割草 30 秒打斗，主角用剑，场景在竹林…"></textarea>
+        <label>每个镜头的秒数（会写进给 AI 的要求里）</label>
+        <div class="pb-secs" id="pbSecs"></div>
+        <label>投放哪些 skill（提示词模板）</label>
+        <div class="pb-skills" id="pbSkills"></div>
+      </div>
+      <div class="pb-right">
+        <div class="pb-items-head">
+          <b>分镜条目</b>
+          <span class="pb-sub" id="pbItemsTip"></span>
+          <span class="spacer"></span>
+          <button class="btn mini" id="pbAdd">＋ 加一条</button>
+        </div>
+        <div class="pb-items" id="pbItems"></div>
+      </div>
+    </div>
+    <div class="pb-foot">
+      <span class="pb-sub">把素材从左边拖到某一条上 = 给这条配图（不移动文件）</span>
+      <span class="spacer"></span>
+      <button class="btn mini" id="pbClearImgs">清空所有配图</button>
+      <button class="btn mini danger" id="pbClearAll">清空条目</button>
+    </div>`;
+  document.body.appendChild(boardEl);
+
+  boardEl.querySelector('#pbSize').onclick = () => toggleBoardSize();
+  boardEl.querySelector('#pbClose').onclick = () => closeBoard();
+  boardEl.querySelector('#pbAdd').onclick = () => {
+    boardData().items.push(newBoardItem());
+    renderBoard(); saveBoard(true);
+  };
+  boardEl.querySelector('#pbClearImgs').onclick = () => {
+    const d = boardData();
+    if (!d.items.some((x) => x.image)) return toast('现在没有配图', 'warn');
+    if (!confirm('清空所有条目的配图？\n（只是解除配图，文件一个都不动）')) return;
+    d.items.forEach((x) => { x.image = null; });
+    renderBoard(); saveBoard(true);
+  };
+  boardEl.querySelector('#pbClearAll').onclick = () => {
+    const d = boardData();
+    if (!d.items.length) return;
+    if (!confirm(`清空 ${d.items.length} 条分镜？`)) return;
+    d.items = [newBoardItem()];
+    renderBoard(); saveBoard(true);
+  };
+  boardEl.querySelector('#pbScript').oninput = (ev) => {
+    boardData().script = ev.target.value;
+    saveBoard();
+  };
+
+  // 从素材管理器拖图片进来 → 配给某一条（这次拖拽由工作台接管，不当成"移动到文件夹"）
+  boardEl.addEventListener('dragover', (ev) => {
+    if (isFileDrag(ev)) return;                       // 外部文件：交给 window 的上传逻辑
+    if (!S.dragPaths || !S.dragPaths.length) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const host = ev.target.closest('.pb-item');
+    boardEl.querySelectorAll('.pb-item').forEach((x) => x.classList.toggle('drop-hot', x === host));
+  });
+  boardEl.addEventListener('dragleave', (ev) => {
+    if (ev.target === boardEl) boardEl.querySelectorAll('.pb-item').forEach((x) => x.classList.remove('drop-hot'));
+  });
+  boardEl.addEventListener('drop', (ev) => {
+    if (isFileDrag(ev)) return;                       // 外部文件不在这里处理
+    if (!S.dragPaths || !S.dragPaths.length) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const paths = S.dragPaths.slice();
+    S.dragPaths = null;
+    hideDragGhost();
+    setDropHints(false);
+    clearDropTargets();
+    boardEl.querySelectorAll('.pb-item').forEach((x) => x.classList.remove('drop-hot'));
+    const host = ev.target.closest('.pb-item');
+    assignBoardImages(paths, host ? host.dataset.id : null);
+  });
+}
+
+/** 把拖进来的素材配给条目：指定了 id 就配那条，否则填第一条还没图的 */
+function assignBoardImages(paths, itemId) {
+  const d = boardData();
+  const files = paths.filter((p) => !isVirtualPath(p));
+  if (!files.length) return toast('文件夹 / 虚拟分类不能当配图，拖具体文件进来', 'warn');
+  let idx = d.items.findIndex((x) => x.id === itemId);
+  if (idx < 0) idx = d.items.findIndex((x) => !x.image);
+  if (idx < 0) { d.items.push(newBoardItem()); idx = d.items.length - 1; }
+  let n = 0;
+  for (const p of files) {
+    if (idx >= d.items.length) d.items.push(newBoardItem());
+    d.items[idx].image = { root: S.rootId, path: p };
+    idx++; n++;
+  }
+  renderBoard();
+  saveBoard(true);
+  toast(`已给 ${n} 条配图`, 'ok');
+}
+
+function renderBoard() {
+  if (!boardEl) return;
+  const d = boardData();
+  boardEl.classList.toggle('big', !!d.big);
+  boardEl.classList.toggle('small', !d.big);
+  const sub = boardEl.querySelector('#pbSub');
+  if (sub) {
+    sub.textContent = `${d.items.length} 条 · ${d.seconds}s`
+      + ` · 配图 ${d.items.filter((x) => x.image).length}`
+      + (d.skills.length ? ` · skill ${d.skills.length}` : '');
+  }
+  renderBoardSecs();
+  renderBoardItems();
+  renderBoardSkills();
+}
+
+function renderBoardSecs() {
+  const box = boardEl.querySelector('#pbSecs');
+  const d = boardData();
+  box.innerHTML = '';
+  for (const s of [5, 10, 15, 20]) {
+    const b = document.createElement('button');
+    b.className = 'pb-sec-btn' + (s === d.seconds ? ' on' : '');
+    b.textContent = s + 's';
+    b.onclick = () => { d.seconds = s; renderBoard(); saveBoard(); };
+    box.appendChild(b);
+  }
+}
+
+function renderBoardItems() {
+  const box = boardEl.querySelector('#pbItems');
+  const d = boardData();
+  box.innerHTML = '';
+  if (!d.items.length) {
+    box.innerHTML = '<div class="pb-dim">还没有条目 —— 点「＋ 加一条」，或直接从素材管理器拖图片进来</div>';
+    return;
+  }
+  d.items.forEach((it, i) => {
+    const row = document.createElement('div');
+    row.className = 'pb-item';
+    row.dataset.id = it.id;
+    const thumb = it.image
+      ? `<img src="${esc(fileUrl(it.image.root, it.image.path))}" alt="" loading="lazy">`
+      : '<div class="pb-noimg">拖图<br>进来</div>';
+    row.innerHTML = `
+      <div class="pb-idx">${i + 1}</div>
+      <div class="pb-thumb">${thumb}</div>
+      <div class="pb-prompt">
+        <textarea spellcheck="false" placeholder="这一条的提示词…">${esc(it.prompt)}</textarea>
+        <div class="pb-meta">${it.image ? esc(baseName(it.image.path)) : '还没配图'}${it.state ? ' · ' + esc(it.state) : ''}</div>
+      </div>
+      <div class="pb-ops">
+        <button class="pb-op" data-op="up" title="上移">↑</button>
+        <button class="pb-op" data-op="down" title="下移">↓</button>
+        <button class="pb-op" data-op="img" title="去掉这条的配图">🖼</button>
+        <button class="pb-op danger" data-op="del" title="删除这一条">×</button>
+      </div>`;
+    const ta = row.querySelector('textarea');
+    ta.oninput = () => { it.prompt = ta.value; saveBoard(); };   // 只存盘，不重渲染（不然焦点会丢）
+    row.querySelectorAll('.pb-op').forEach((b) => {
+      b.onclick = () => {
+        const arr = d.items;
+        const k = arr.indexOf(it);
+        const op = b.dataset.op;
+        if (op === 'del') arr.splice(k, 1);
+        else if (op === 'up' && k > 0) { arr.splice(k, 1); arr.splice(k - 1, 0, it); }
+        else if (op === 'down' && k < arr.length - 1) { arr.splice(k, 1); arr.splice(k + 1, 0, it); }
+        else if (op === 'img') it.image = null;
+        else return;
+        renderBoard(); saveBoard(true);
+      };
+    });
+    box.appendChild(row);
+  });
+}
+
+async function renderBoardSkills() {
+  const box = boardEl.querySelector('#pbSkills');
+  if (!box) return;
+  const d = boardData();
+  box.innerHTML = '<div class="pb-dim">加载中…</div>';
+  let data;
+  try { data = await api('/api/skills'); }
+  catch (e) { box.innerHTML = `<div class="pb-dim">${esc(e.message)}</div>`; return; }
+  const dirs = (data.dirs || []).filter((x) => x.exists && x.files.length);
+  box.innerHTML = '';
+  if (!dirs.length) {
+    box.innerHTML = '<div class="pb-dim">还没有模板 —— 左侧「技能（提示词模板）」分区点 ＋ 挂载一个目录</div>';
+    return;
+  }
+  const chosen = new Set(d.skills.map((s) => s.dirId + '|' + s.rel));
+  for (const dir of dirs) {
+    const head = document.createElement('div');
+    head.className = 'pb-skill-dir';
+    head.textContent = '📚 ' + dir.name;
+    box.appendChild(head);
+    renderSkillPick(box, buildSkillTree(dir.files), 0, dir, chosen);
+  }
+}
+
+/** skill 选择树（和左侧技能分区同一套层级规则：缩进 + 折叠感） */
+function renderSkillPick(parent, node, depth, dir, chosen) {
+  for (const [name, sub] of Array.from(node.dirs.entries()).sort(skillByName)) {
+    const row = document.createElement('div');
+    row.className = 'pb-skill-row dir';
+    row.style.paddingLeft = (6 + depth * 12) + 'px';
+    row.textContent = '📁 ' + name;
+    parent.appendChild(row);
+    renderSkillPick(parent, sub, depth + 1, dir, chosen);
+  }
+  for (const f of node.files.slice().sort(skillByName)) {
+    const key = dir.id + '|' + f.rel;
+    const row = document.createElement('label');
+    row.className = 'pb-skill-row pick';
+    row.style.paddingLeft = (6 + depth * 12 + 12) + 'px';
+    row.innerHTML = `<input type="checkbox"${chosen.has(key) ? ' checked' : ''}><span>📄 ${esc(f.leaf || f.name)}</span>`;
+    row.querySelector('input').onchange = (ev) => {
+      const dd = boardData();
+      if (ev.target.checked) dd.skills.push({ dirId: dir.id, rel: f.rel });
+      else dd.skills = dd.skills.filter((s) => !(s.dirId === dir.id && s.rel === f.rel));
+      saveBoard();
+      const sub = boardEl.querySelector('#pbSub');
+      if (sub) {
+        sub.textContent = `${dd.items.length} 条 · ${dd.seconds}s`
+          + ` · 配图 ${dd.items.filter((x) => x.image).length} · skill ${dd.skills.length}`;
+      }
+    };
+    parent.appendChild(row);
+  }
+}
+
 /* ===================== 模态框 ===================== */
 
 function showModal(html) {
@@ -2806,6 +3128,7 @@ function bindToolbarEvents() {
   // 根
   $('#btnAddRoot').onclick = () => openAddRootDialog();
   $('#btnAddSkill').onclick = () => openAddRootDialog(null, 'skill');
+  $('#btnBoard').onclick = () => openBoard();
 
   // 视图
   $('#viewSwitch').onclick = (ev) => {
@@ -3109,6 +3432,9 @@ function bindKeyboardEvents() {
     const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
 
     if (ev.key === 'Escape') {
+      // 提示词工作台优先：放大态按 Esc = 缩成右下角小框（好接着从左边拖图片进来）
+      const bd = boardData();
+      if (bd.open && bd.big) { ev.preventDefault(); return toggleBoardSize(false); }
       if (!$('#lightbox').classList.contains('hidden')) return closeLightbox();
       if (!$('#modalMask').classList.contains('hidden')) return closeModal();
       return hideCtxMenu();

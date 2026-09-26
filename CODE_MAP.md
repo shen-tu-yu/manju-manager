@@ -43,6 +43,7 @@
 |---|---|
 | 配置 / 根目录 | `GET·POST /api/config`、`POST /api/roots`、`DELETE /api/roots/:id` |
 | **技能目录** | `GET·POST /api/skills`、`DELETE /api/skills/:id`、`GET /api/skills/file` |
+| **提示词工作台** | `GET·POST /api/board` |
 | **收件箱** | `GET /api/edge`、`GET /api/events`(SSE)、`GET /api/inbox`、`GET /api/inbox/targets`、`POST /api/inbox/ingest` |
 | 磁盘浏览 / 目录 | `GET /api/fs/drives`、`GET /api/fs/dirs`、`GET /api/list`、`GET /api/tree` |
 | 文件读写 | `GET /api/file`、`GET·POST /api/text`、`PUT /api/upload`、`POST /api/mkdir`、`/api/mkdir-template`、`/api/rename`、`/api/rename-batch`、`/api/move`、`/api/copy`、`POST /api/delete` |
@@ -258,6 +259,24 @@
 - `previewSkill(dir, file)`：点文件名弹出内容预览
 - 「＋」→ `openAddRootDialog(null, 'skill')`（**和加素材根目录共用同一个对话框**）
 - `init()` 末尾会调一次 `renderSkills()`
+
+### 3.10 提示词工作台（`pboard`）
+
+- **一块板子**，存 `settings.promptBoard`（JSON）。第一期单板；以后要多剧本再建表
+  （`GET·POST /api/board`，POST 里对 items/skills 做了字段白名单，脏数据不会写进去）
+- 形态：`.pboard.big`（居中大窗，`min(1180px,94vw) × min(780px,88vh)`）↔ `.pboard.small`（右下小框 340px），
+  `toggleBoardSize()` 切换；**Esc 在 `bindKeyboardEvents` 里优先处理**（放大态 → 缩小），
+  缩小态**不拦**（让灯箱/弹窗的 Esc 照旧）。缩小态 `.pb-left` 隐藏，只留条目列表
+- **拖图**：面板自己的 `dragover`/`drop` 处理 `S.dragPaths`（内部拖拽），
+  命中后 `ev.stopPropagation()` —— 否则 window 那层会把它当成"拖到空白处=取消"。
+  **外部文件拖入不在这里处理**（`isFileDrag` 直接 return，留给上传逻辑）
+- 配图规则（`assignBoardImages`）：指定条目就配那条；拖到空白处填**第一条没图的**；不够就新建条目
+- ⚠️ 条目 textarea 的 `oninput` **只 `saveBoard()`，绝不 `renderBoard()`** —— 重渲染会重建 textarea，
+  用户的输入和光标都会丢
+- skill 勾选树复用 `buildSkillTree()` / `skillByName`（和左侧「技能」分区同一套层级规则，
+  仍然**不许平铺**）
+- 存盘：`saveBoard()` 防抖 600ms；结构变化（增删/移动/配图）用 `saveBoard(true)` 立刻存
+- ⏳ 下一步（切片 3）：投放通道 —— 命令队列 + 助手脚本轮询 + 逐条投图/投提示词 + 点发送 + 回执
 
 ---
 

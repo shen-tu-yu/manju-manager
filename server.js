@@ -1236,6 +1236,35 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true });
     }
 
+    // ============================ 提示词工作台（一块板子） ============================
+    // 存 settings 表的 promptBoard 键（JSON）。第一期先单板，以后要多剧本再建表。
+
+    if (p === '/api/board' && req.method === 'GET') {
+      const d = DB.getSettings().promptBoard;
+      return sendJSON(res, 200, (d && typeof d === 'object') ? d : {
+        script: '', seconds: 10, skills: [], items: [],
+      });
+    }
+
+    if (p === '/api/board' && req.method === 'POST') {
+      const b = await body();
+      const data = {
+        script: String(b.script == null ? '' : b.script),
+        seconds: Number(b.seconds) || 10,
+        skills: Array.isArray(b.skills) ? b.skills.map((x) => ({ dirId: String(x.dirId || ''), rel: String(x.rel || '') })) : [],
+        items: Array.isArray(b.items) ? b.items.map((it) => ({
+          id: String(it.id || ''),
+          prompt: String(it.prompt == null ? '' : it.prompt),
+          image: (it.image && it.image.root && it.image.path) ? { root: String(it.image.root), path: String(it.image.path) } : null,
+          state: String(it.state || ''),
+          note: String(it.note || ''),
+        })) : [],
+        updatedAt: Date.now(),
+      };
+      DB.setSettings({ promptBoard: data });
+      return sendJSON(res, 200, { ok: true, saved: data.items.length });
+    }
+
     // 读一份模板（预览用；以后投放给 AI 也用这个接口取内容）
     if (p === '/api/skills/file' && req.method === 'GET') {
       const d = getSkillDir(q.get('id'));
