@@ -434,8 +434,9 @@ select:hover { color: var(--text); border-color: #3a4352; }
 /* ===================== 模态框 ===================== */
 
 /* ⚠️ 层级顺序（从低到高，改之前先看 CODE_MAP「浮层层级」那一节）：
-   下拉 800 ＜ #dropMask 980 ＜ 浮层面板 .pboard 1080 ＜ 入库卡片 1099/1100
-   ＜ #ctxMenu 1150 ＜ #lightbox 1190 ＜ #modalMask 1200（弹窗必须盖住所有面板！）
+   下拉 800 ＜ #dropMask 980 ＜ 浮层面板 .pboard 1080 ＜ #rawWindow .sbraw 1090
+   ＜ 入库卡片 1099/1100 ＜ #ctxMenu 1150 ＜ #lightbox 1190
+   ＜ #modalMask 1200（弹窗必须盖住所有面板！）
    ＜ .up-bar 1250 ＜ #toasts 1300（进度和提示永远看得见）＜ .drag-ghost 2000
    —— 曾经的坑：弹窗只有 950、工作台 1080，于是"点预设什么都没弹出来"，其实弹在面板背后 */
 #modalMask {
@@ -785,6 +786,58 @@ body.dragging { cursor: grabbing; }
   border-radius: 6px; padding: 3px 6px; font-size: 12px; cursor: pointer;
 }
 .pb-site:hover { color: var(--text); border-color: #3a4352; }
+
+/* ===================== 📄 分镜原文窗口 =====================
+   ⚠️ 层级 1090 —— **比提示词工作台（1080）高**：它要盖在工作台上面，不能被别的面板压住。
+   这是"先贴完整原文、再分割"的落点：分割只读它，原文不会被切分动作覆盖。 */
+.sbraw {
+  position: fixed; z-index: 1090; left: 50%; top: 14px; transform: translateX(-50%);
+  width: min(1180px, 94vw); height: min(52vh, 520px);
+  display: flex; flex-direction: column;
+  background: var(--panel-2); border: 1px solid var(--accent);
+  border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); overflow: hidden;
+}
+.sbraw.hidden { display: none; }
+.sbr-head {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+  background: var(--accent-soft); border-bottom: 1px solid var(--border); flex: 0 0 auto;
+}
+.sbr-head b { font-size: 13.5px; }
+.sbr-hist {
+  background: #21252e; color: var(--text-dim); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 6px; font-size: 12px; max-width: 230px; cursor: pointer;
+}
+.sbr-hist:hover { color: var(--text); border-color: #3a4352; }
+/* 层级树：几个大分镜、每个里头几个小分镜 */
+.sbr-tree {
+  flex: 0 0 auto; max-height: 92px; overflow: auto; padding: 6px 12px;
+  border-bottom: 1px dashed var(--border); display: flex; flex-direction: column; gap: 3px;
+}
+.sbr-node { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-dim); }
+.sbr-node b { color: var(--accent); font-weight: 600; flex: none; }
+.sbr-node span { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbr-node i { margin-left: auto; color: var(--text-faint); font-style: normal; flex: none; }
+.sbr-node.warn { color: #e0b050; }
+#sbrText {
+  flex: 1 1 auto; min-height: 110px; margin: 0; border: 0; border-radius: 0;
+  background: #0f1115; color: #d6e0ee; padding: 10px 12px;
+  font: 12.5px/1.75 Consolas, "Microsoft YaHei UI", monospace;
+  white-space: pre-wrap; word-break: break-word; resize: none;
+}
+#sbrText:focus { outline: none; border: 0; }
+.sbr-foot {
+  flex: 0 0 auto; padding: 7px 12px; border-top: 1px solid var(--border);
+  color: var(--text-faint); font-size: 11.5px; line-height: 1.6;
+}
+
+/* 预设库：多份预设的切换栏（⚙ 预设 弹窗里） */
+.tpl-bar { display: flex; gap: 6px; align-items: center; margin: 10px 0 0; flex-wrap: wrap; }
+.tpl-sel {
+  flex: 1 1 200px; min-width: 160px; background: #21252e; color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 12.5px;
+}
+.tpl-namerow { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.tpl-namerow input { flex: 1 1 auto; }
 
 /* 预设提示词编辑框 */
 .ask-tpl {
