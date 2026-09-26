@@ -950,42 +950,14 @@ async function listIngestTargets() {
   return { targets: out, lastTarget: config.lastIngestTarget || null, historyMax: INGEST_HISTORY_MAX };
 }
 
-// ---------------------------------------------------------------- 技能目录（提示词模板）
-//
-// 和素材根目录**分开存**（独立表 / 独立接口），否则会连带三个问题：
-//   ① 左侧素材树里冒出 skills 目录，和素材混在一起
-//   ② 收件箱会去 fs.watch 它，改个模板就被当成"新文件"
-//   ③ 回收站/虚拟分类按根目录工作，会在里面建 .recycle
-// 这里只做"挂载任意磁盘目录 + 列出可投放的模板文件"，路径安全仍然走 resolveSafe。
+// ---------------------------------------------------------------- 技能目录（提示词模板）（已拆到 lib/skills.js）
 
-const SKILL_EXT = new Set(['.md', '.txt', '.markdown']);   // 只认这些；yaml/json 不列也不投
-const SKILL_FILE_MAX = 300;
-const SKILL_DEPTH_MAX = 3;
+const createSkills = require('./lib/skills');
+const skills = createSkills({
+  DB, sendJSON, readJson: readJSONBody, HttpError, LOG, resolveSafe, toRel,
+  getConfig: () => config,
+});
 
-function getSkillDir(id) {
-  const d = DB.getSkillDirs().find((x) => x.id === String(id || ''));
-  if (!d) throw new HttpError(404, '技能目录不存在，可能已被移除');
-  return d;
-}
-
-/** 递归收模板文件（限深限数，只留白名单扩展名） */
-async function collectSkillFiles(absDir, relDir, depth, out) {
-  if (depth > SKILL_DEPTH_MAX || out.length >= SKILL_FILE_MAX) return;
-  let ds = [];
-  try { ds = await fsp.readdir(absDir, { withFileTypes: true }); } catch { return; }
-  ds.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { numeric: true }));
-  for (const d of ds) {
-    if (out.length >= SKILL_FILE_MAX) return;
-    if (d.name.startsWith('.')) continue;
-    const rel = relDir ? relDir + '/' + d.name : d.name;
-    if (d.isDirectory()) { await collectSkillFiles(path.join(absDir, d.name), rel, depth + 1, out); continue; }
-    if (!d.isFile()) continue;
-    if (!SKILL_EXT.has(path.extname(d.name).toLowerCase())) continue;
-    let size = 0;
-    try { size = (await fsp.stat(path.join(absDir, d.name))).size; } catch { /* 读不到就当 0 */ }
-    out.push({ name: d.name, rel, size });
-  }
-}
 
 // ---------------------------------------------------------------- 提示词工作台（已拆到 lib/board.js）
 
@@ -1181,43 +1153,12 @@ const server = http.createServer(async (req, res) => {
 
     // ============================ 技能目录（提示词模板） ============================
 
-    // 挂载的目录列表 + 每个目录里可投放的模板文件（顺带带上"目录还在不在"）
-    if (p === '/api/skills' && req.method === 'GET') {
-      const out = [];
-      for (const d of DB.getSkillDirs()) {
-        const exists = fs.existsSync(d.path);
-        let files = [];
-        if (exists) {
-          files = [];
-          await collectSkillFiles(d.path, '', 0, files);
-        }
-        out.push({ id: d.id, name: d.name, path: d.path, exists, files });
-      }
-      return sendJSON(res, 200, { dirs: out, exts: Array.from(SKILL_EXT), maxFiles: SKILL_FILE_MAX });
-    }
+    // 技能目录：列出 / 挂载 / 移除（实现见 lib/skills.js）
+    if (p === '/api/skills' && req.method === 'GET') return await skills.list(req, res);
 
-    if (p === '/api/skills' && req.method === 'POST') {
-      const b = await body();
-      const raw = String(b.path || '').trim();
-      if (!raw) throw new HttpError(400, '请选择技能目录');
-      const abs = path.resolve(raw);
-      const st = await fsp.stat(abs).catch(() => null);
-      if (!st || !st.isDirectory()) throw new HttpError(400, '目录不存在或不是文件夹：' + abs);
-      const dup = DB.getSkillDirs().find((x) => x.path.toLowerCase() === abs.toLowerCase());
-      if (dup) return sendJSON(res, 200, { ok: true, id: dup.id, existed: true });
-      const id = 'sk' + Date.now().toString(36);
-      DB.addSkillDir(id, String(b.name || path.basename(abs) || abs), abs);
-      LOG(`[技能] 挂载目录 ${abs}`);
-      return sendJSON(res, 200, { ok: true, id });
-    }
+    if (p === '/api/skills' && req.method === 'POST') return await skills.add(req, res);
 
-    if (p.startsWith('/api/skills/') && req.method === 'DELETE') {
-      const id = decodeURIComponent(p.slice('/api/skills/'.length));
-      const d = getSkillDir(id);
-      DB.removeSkillDir(id);
-      LOG(`[技能] 移除目录 ${d.path}`);
-      return sendJSON(res, 200, { ok: true });
-    }
+    if (p.startsWith('/api/skills/') && req.method === 'DELETE') return await skills.remove(req, res, p);
 
     // ============================ 提示词工作台（一块板子） ============================
     // 存 settings 表的 promptBoard 键（JSON）。第一期先单板，以后要多剧本再建表。
@@ -1247,22 +1188,8 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/deliver/state' && req.method === 'GET') return await deliver.state(req, res);
 
     // 读一份模板（预览用；以后投放给 AI 也用这个接口取内容）
-    if (p === '/api/skills/file' && req.method === 'GET') {
-      const d = getSkillDir(q.get('id'));
-      const abs = resolveSafe(d.path, q.get('rel') || '');
-      const st = await fsp.stat(abs).catch(() => null);
-      if (!st || !st.isFile()) throw new HttpError(404, '文件不存在');
-      const ext = path.extname(abs).toLowerCase();
-      if (!SKILL_EXT.has(ext)) throw new HttpError(415, `这个类型不投放（只支持 ${Array.from(SKILL_EXT).join(' / ')}）`);
-      if (st.size > config.limits.textPreviewBytes) {
-        throw new HttpError(413, `文件太大（超过 ${Math.round(config.limits.textPreviewBytes / 1048576)}MB）`);
-      }
-      const content = await fsp.readFile(abs, 'utf8');
-      return sendJSON(res, 200, {
-        dirId: d.id, dirName: d.name, name: path.basename(abs), rel: toRel(d.path, abs),
-        size: st.size, mtime: st.mtimeMs, content,
-      });
-    }
+    // 读一份模板（预览用；以后投放给 AI 也用这个接口取内容）
+    if (p === '/api/skills/file' && req.method === 'GET') return await skills.read(req, res, q);
 
     // ============================ 磁盘浏览（用于选择文件夹） ============================
     if (p === '/api/fs/drives' && req.method === 'GET') {

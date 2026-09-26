@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 22:38:39
+> 生成时间：2026/9/26 22:39:34
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -10,7 +10,7 @@
 
 | 文件 | 行数 |
 |---|---|
-| `server.js` | 1961 |
+| `server.js` | 1888 |
 | `db.js` | 179 |
 | `launcher.js` | 236 |
 | `browsers.js` | 211 |
@@ -22,57 +22,57 @@
 
 | 行 | 方法 | 路由 |
 |---|---|---|
-| 1045 | GET | `/api/config` |
-| 1062 | POST | `/api/config` |
-| 1081 | GET | `/api/browsers` |
-| 1088 | GET | `/api/edge` |
-| 1105 | GET | `/api/events` |
-| 1119 | GET | `/api/inbox` |
-| 1128 | GET | `/api/inbox/targets` |
-| 1133 | POST | `/api/inbox/ingest` |
-| 1156 | POST | `/api/roots` |
-| 1172 | DELETE | `/api/roots/` |
-| 1185 | GET | `/api/skills` |
-| 1199 | POST | `/api/skills` |
-| 1214 | DELETE | `/api/skills/` |
-| 1225 | GET | `/api/board` |
-| 1227 | POST | `/api/board` |
-| 1232 | GET | `/api/deliver/next` |
-| 1235 | POST | `/api/deliver/done` |
-| 1241 | POST | `/api/deliver/queue` |
-| 1244 | POST | `/api/deliver/send` |
-| 1247 | GET | `/api/deliver/state` |
-| 1250 | GET | `/api/skills/file` |
-| 1268 | GET | `/api/fs/drives` |
-| 1272 | GET | `/api/fs/dirs` |
-| 1291 | GET | `/api/list` |
-| 1323 | GET | `/api/tree` |
-| 1345 | GET | `/api/file` |
-| 1351 | GET | `/api/text` |
-| 1365 | POST | `/api/text` |
-| 1375 | PUT | `/api/upload` |
-| 1404 | POST | `/api/mkdir` |
-| 1416 | POST | `/api/mkdir-template` |
-| 1433 | POST | `/api/rename` |
-| 1448 | POST | `/api/rename-batch` |
-| 1481 | POST | `/api/move` · `/api/copy` |
-| 1516 | POST | `/api/delete` |
-| 1536 | GET | `/api/trash` |
-| 1555 | POST | `/api/trash/restore` |
-| 1581 | POST | `/api/trash/purge` |
-| 1596 | GET | `/api/search` |
-| 1639 | GET | `/api/vgroups` |
-| 1644 | POST | `/api/vgroups` |
-| 1663 | POST | `/api/vgroups/update` |
-| 1675 | POST | `/api/vgroups/assign` |
-| 1693 | POST | `/api/vgroups/delete` |
-| 1707 | POST | `/api/vgroups/materialize` |
-| 1764 | GET | `/api/duplicates` |
-| 1783 | POST | `/api/clipboard` |
-| 1828 | POST | `/api/reveal` |
-| 1846 | GET | `/api/sysinfo` |
+| 1017 | GET | `/api/config` |
+| 1034 | POST | `/api/config` |
+| 1053 | GET | `/api/browsers` |
+| 1060 | GET | `/api/edge` |
+| 1077 | GET | `/api/events` |
+| 1091 | GET | `/api/inbox` |
+| 1100 | GET | `/api/inbox/targets` |
+| 1105 | POST | `/api/inbox/ingest` |
+| 1128 | POST | `/api/roots` |
+| 1144 | DELETE | `/api/roots/` |
+| 1157 | GET | `/api/skills` |
+| 1159 | POST | `/api/skills` |
+| 1161 | DELETE | `/api/skills/` |
+| 1166 | GET | `/api/board` |
+| 1168 | POST | `/api/board` |
+| 1173 | GET | `/api/deliver/next` |
+| 1176 | POST | `/api/deliver/done` |
+| 1182 | POST | `/api/deliver/queue` |
+| 1185 | POST | `/api/deliver/send` |
+| 1188 | GET | `/api/deliver/state` |
+| 1192 | GET | `/api/skills/file` |
+| 1195 | GET | `/api/fs/drives` |
+| 1199 | GET | `/api/fs/dirs` |
+| 1218 | GET | `/api/list` |
+| 1250 | GET | `/api/tree` |
+| 1272 | GET | `/api/file` |
+| 1278 | GET | `/api/text` |
+| 1292 | POST | `/api/text` |
+| 1302 | PUT | `/api/upload` |
+| 1331 | POST | `/api/mkdir` |
+| 1343 | POST | `/api/mkdir-template` |
+| 1360 | POST | `/api/rename` |
+| 1375 | POST | `/api/rename-batch` |
+| 1408 | POST | `/api/move` · `/api/copy` |
+| 1443 | POST | `/api/delete` |
+| 1463 | GET | `/api/trash` |
+| 1482 | POST | `/api/trash/restore` |
+| 1508 | POST | `/api/trash/purge` |
+| 1523 | GET | `/api/search` |
+| 1566 | GET | `/api/vgroups` |
+| 1571 | POST | `/api/vgroups` |
+| 1590 | POST | `/api/vgroups/update` |
+| 1602 | POST | `/api/vgroups/assign` |
+| 1620 | POST | `/api/vgroups/delete` |
+| 1634 | POST | `/api/vgroups/materialize` |
+| 1691 | GET | `/api/duplicates` |
+| 1710 | POST | `/api/clipboard` |
+| 1755 | POST | `/api/reveal` |
+| 1773 | GET | `/api/sysinfo` |
 
-## 三、后端函数 / 常量（56 个函数）
+## 三、后端函数 / 常量（54 个函数）
 
 | 行 | 名字 | 说明 |
 |---|---|---|
@@ -127,11 +127,9 @@
 | 897 | `ingestKey()` | 入库位置的唯一标识（虚拟分类靠 gid 区分，文件夹靠相对路径） |
 | 902 | `collectDirs()` | 递归列文件夹（DFS + 带层级 depth），最多 limit 个 |
 | 923 | `listIngestTargets()` | / |
-| 965 | `getSkillDir()` |  |
-| 972 | `collectSkillFiles()` | 递归收模板文件（限深限数，只留白名单扩展名） |
-| 1892 | `browserInfo()` | 给网页设置面板用：当前选的是谁 + 自动发现的本机浏览器列表 |
-| 1901 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
-| 1948 | `addRoot()` |  |
+| 1819 | `browserInfo()` | 给网页设置面板用：当前选的是谁 + 自动发现的本机浏览器列表 |
+| 1828 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
+| 1875 | `addRoot()` |  |
 
 ## 四、前端函数 / 常量（181 个函数）
 
