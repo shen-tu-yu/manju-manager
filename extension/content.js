@@ -7,11 +7,40 @@
   const FM = 'http://127.0.0.1:8899';
   const MAX_BYTES = 200 * 1024 * 1024;
 
-  // 受支持的投放平台：脚本在哪个站点注入，就"投放到"哪个站点。
-  // 加新平台 = 这里加一行 + 在 @match 与 manifest.json 的 matches 里加上域名。
+  /**
+   * 受支持的投放平台：脚本在哪个站点注入，就"投放到"哪个站点。
+   * 加新平台 = 这里加一项 + UserScript 的 @match + extension/manifest.json 的 matches。
+   *
+   * 每一项的选择器都按**优先级排列**（先精确、后通用），因为第三方 DOM 会改版：
+   *   input  —— 输入框
+   *   send   —— 发送按钮（找不到时统一退回"在输入框按 Enter"，豆包就是这么发的）
+   *   reply  —— AI 回复容器（下一期"读复制按钮取回结果"要用）
+   *
+   * 选择器来源写在 CODE_MAP 2.6：豆包是用户从 DevTools 实测给的；DeepSeek 来自 ArcRift 的
+   * PLATFORM_SELECTORS.md（2026-05 实测）。查不到实测选择器的平台，就只留通用兜底 + 靠失败诊断。
+   */
   const SITES = [
-    { id: 'doubao', name: '豆包', re: /(^|\.)doubao\.com$/i },
-    { id: 'pavo', name: 'Pavo', re: /(^|\.)pavo-ai\.work$/i },
+    {
+      id: 'doubao', name: '豆包', re: /(^|\.)doubao\.com$/i,
+      input: ['textarea.semi-input-textarea', '[contenteditable="true"]', 'textarea'],
+      send: ['#flow-end-msg-send', '[data-testid="chat_input_send_button"]', 'button[aria-label="发送"]'],
+      reply: ['[data-message-author-role="assistant"]', '.ds-markdown', '[class*="message-content"]'],
+    },
+    {
+      id: 'deepseek', name: 'DeepSeek', re: /(^|\.)deepseek\.com$/i,
+      // DeepSeek 的输入框就是个 <textarea id="chat-input">，比豆包的 Semi 组件好认
+      input: ['#chat-input', 'textarea[placeholder*="Send a message"]',
+        'textarea[data-testid="chat-input"]', 'div[contenteditable][role="textbox"]', 'textarea'],
+      send: ['button[aria-label="Send message"]', '[data-testid="send-button"]', 'button[type="submit"]'],
+      reply: ['[data-message-author-role="assistant"]', '.ds-markdown',
+        '[class*="AssistantMessage"]', '[class*="markdown-body"]'],
+    },
+    {
+      id: 'pavo', name: 'Pavo', re: /(^|\.)pavo-ai\.work$/i,
+      input: ['[contenteditable="true"]', 'textarea'],
+      send: [],
+      reply: [],
+    },
   ];
   const SITE = SITES.find((s) => s.re.test(location.hostname)) || null;
   const SITE_NAME = SITE ? SITE.name : '目标站';
@@ -186,11 +215,15 @@
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))));
   }
 
-  /** 找输入框：豆包是 textarea.semi-input-textarea（Semi 设计系统），其它站退到通用选择器 */
+  /** 找输入框：按当前平台的选择器表挨个试（先精确后通用） */
   function findInputBox() {
-    return document.querySelector('textarea.semi-input-textarea')
-      || document.querySelector('[contenteditable="true"]')
-      || document.querySelector('textarea');
+    const list = (SITE && SITE.input) || ['[contenteditable="true"]', 'textarea'];
+    for (const sel of list) {
+      let el = null;
+      try { el = document.querySelector(sel); } catch { continue; }
+      if (el) return el;
+    }
+    return null;
   }
 
   /** 把提示词写进输入框（先试 insertText，再退回原生 setter + input 事件，两种都能让 React 收到） */
@@ -234,18 +267,19 @@
     el.dispatchEvent(new KeyboardEvent('keyup', o));
   }
 
-  /** 发送按钮：先用豆包实测到的精确选择器，再按属性打分兜底；找不到返回 null（不瞎点） */
+  /** 发送按钮：先用当前平台实测过的精确选择器，再按属性打分兜底；找不到返回 null（不瞎点） */
   function findSendButton() {
-    // ① 实测过的精确选择器（豆包：#flow-end-msg-send / data-testid / aria-label 三件套，
-    //    由用户从 DevTools 里给出来的，比打分可靠得多）
-    const exacts = document.querySelectorAll(
-      '#flow-end-msg-send, [data-testid="chat_input_send_button"], button[aria-label="发送"]');
-    for (const el of exacts) {
-      if (el.disabled) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) return el;
+    // ① 平台选择器表（豆包：#flow-end-msg-send 三件套；DeepSeek：aria-label="Send message" 等）
+    for (const sel of ((SITE && SITE.send) || [])) {
+      let nodes = [];
+      try { nodes = document.querySelectorAll(sel); } catch { continue; }
+      for (const el of nodes) {
+        if (el.disabled) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return el;
+      }
     }
-    // ② 打分兜底：其它站点 / 豆包改版
+    // ② 打分兜底：平台改版时还能救一下
     const list = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="send"], [class*="send" i]'));
     let best = null, bestScore = 0;
     for (const el of list) {

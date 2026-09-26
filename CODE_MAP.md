@@ -179,6 +179,32 @@
   `openAddRootDialog(startPath, mode)`（`mode='skill'`）—— 加素材根目录和挂技能目录是同一个对话框，
   **不要写第二个**
 
+### 2.6 投放平台的适配表（**加平台看这里**）
+
+脚本顶部一张 `SITES` 表定所有平台（`doubao-helper.user.js`）：
+
+| 字段 | 作用 |
+|---|---|
+| `id` / `name` | 任务隔离用的标识（`site=<id>`）/ 显示名 |
+| `re` | 域名匹配（决定脚本在哪个站干活） |
+| `input` | 输入框选择器，**按优先级排列**（先精确后通用） |
+| `send` | 发送按钮选择器，**按优先级排列**（全找不到就统一退回"在输入框按 Enter"） |
+| `reply` | AI 回复容器（下一期"读复制按钮取回结果"用） |
+
+**加一个平台 = 四处**：`SITES` 加一项、UserScript `@match`、`extension/manifest.json` 的 `matches`、
+app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手菜单都从它渲染）。
+
+**选择器来源（别自己猜，第三方 DOM 猜不得）**：
+
+| 平台 | 来源 | 关键选择器 |
+|---|---|---|
+| 豆包 | 用户从 DevTools 实测截图 | 输入框 `textarea.semi-input-textarea`；发送 `#flow-end-msg-send` / `[data-testid="chat_input_send_button"]` / `button[aria-label="发送"]` |
+| DeepSeek | ArcRift 的 `PLATFORM_SELECTORS.md`（2026-05 实测） | 输入框 `#chat-input`（就是个 `<textarea>`）；发送 `button[aria-label="Send message"]`；回复 `.ds-markdown` / `[data-message-author-role="assistant"]` |
+| Pavo | 无公开资料 | 只留通用兜底，靠失败诊断适配 |
+
+> 找选择器的套路：搜「<平台> playwright/selenium 自动化」→ 找 GitHub 上能跑的项目 →
+> 读它的源码里的 `press('Enter')` / `query_selector(...)`。比对着页面瞎试快得多。
+
 ---
 
 ## 三、前端（`public/app.js`）

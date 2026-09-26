@@ -2273,7 +2273,7 @@ const newBoardItem = () => ({
 const boardImageCount = () => boardData().items.reduce((n, x) => n + ((x.images || []).length), 0);
 
 function boardData() {
-  if (!S.board) S.board = { open: false, big: true, script: '', seconds: 10, skills: [], items: [] };
+  if (!S.board) S.board = { open: false, big: true, script: '', seconds: 10, skills: [], items: [], site: 'doubao' };
   return S.board;
 }
 
@@ -2281,7 +2281,7 @@ function boardData() {
 function saveBoard(now) {
   const d = boardData();
   const payload = {
-    script: d.script, seconds: d.seconds, skills: d.skills,
+    script: d.script, seconds: d.seconds, skills: d.skills, site: d.site || 'doubao',
     items: d.items.map(({ id, prompt, images, state, note }) => ({ id, prompt, images, state, note })),
   };
   const put = () => apiPost('/api/board', payload).catch((e) => toast('工作台保存失败：' + e.message, 'err'));
@@ -2299,6 +2299,7 @@ async function openBoard() {
       if (saved && typeof saved === 'object') {
         d.script = saved.script || '';
         d.seconds = Number(saved.seconds) || 10;
+        d.site = saved.site || d.site || 'doubao';
         d.skills = Array.isArray(saved.skills) ? saved.skills : [];
         d.items = (Array.isArray(saved.items) ? saved.items : []).map((it) => ({
           id: it.id || newBoardItem().id,
@@ -2346,6 +2347,10 @@ function buildBoard() {
       <b>✍️ 提示词工作台</b>
       <span class="pb-sub" id="pbSub"></span>
       <span class="spacer"></span>
+      <select class="pb-site" id="pbSite" title="投放到哪个 AI 站点 —— 对应站点的助手脚本要开着">
+        <option value="doubao">🫘 豆包</option>
+        <option value="deepseek">🐋 DeepSeek</option>
+      </select>
       <button class="pb-mini" id="pbSize" title="缩小成小框（Esc）">⤡</button>
       <button class="pb-mini" id="pbClose" title="关闭">×</button>
     </div>
@@ -2399,6 +2404,11 @@ function buildBoard() {
   boardEl.querySelector('#pbScript').oninput = (ev) => {
     boardData().script = ev.target.value;
     saveBoard();
+  };
+  boardEl.querySelector('#pbSite').onchange = (ev) => {
+    boardData().site = ev.target.value;
+    saveBoard(true);
+    toast('投放目标改为：' + siteName(ev.target.value), 'ok');
   };
 
   // 从素材管理器拖图片进来 → 配给某一条（这次拖拽由工作台接管，不当成"移动到文件夹"）
@@ -2533,6 +2543,8 @@ function renderBoard() {
   }
   renderBoardSecs();
   renderBoardItems();
+  const siteEl = boardEl.querySelector('#pbSite');
+  if (siteEl && siteEl.value !== (d.site || 'doubao')) siteEl.value = d.site || 'doubao';
   // skill 树只在第一次打开时拉一次：它只在挂载/移除技能目录时才变，
   // 每 renderBoard 都拉会把接口刷爆（debug.log 里被 GET /api/skills 刷屏过）
   if (!boardSkillsDone) { boardSkillsDone = true; renderBoardSkills(); }
@@ -2619,13 +2631,13 @@ async function deliverItem(it) {
     it.state = '排队中…';
     renderBoardItems(); saveBoard();
     const r = await apiPost('/api/deliver/queue', {
-      itemId: it.id, site: 'doubao', images: it.images, prompt: it.prompt,
+      itemId: it.id, site: boardData().site || 'doubao', images: it.images, prompt: it.prompt,
     });
-    toast(`已入队：${r.images} 张图 + 提示词 —— 助手脚本会一张张投进豆包`, 'ok', 4200);
+    toast(`已入队：${r.images} 张图 + 提示词 → ${siteName(boardData().site)}`, 'ok', 4200);
     // 几秒后还没被领取，多半是豆包页面没开 / 脚本没启用
     setTimeout(() => {
       if (it.state === '排队中…') {
-        toast('还没有助手脚本领取这条 —— 确认豆包页面停在「对话 / 生成」页（不是云盘页），且脚本是启用状态', 'warn', 8000);
+        toast(`还没有助手脚本领取这条 —— 确认 ${siteName(boardData().site)} 页面开着且停在对话页、「📁 素材」脚本是启用状态`, 'warn', 8000);
       }
     }, 4500);
   } catch (e) {
@@ -2639,7 +2651,7 @@ async function sendItem(it) {
   try {
     it.state = '正在发送…';
     renderBoardItems(); saveBoard();
-    await apiPost('/api/deliver/send', { itemId: it.id, site: 'doubao' });
+    await apiPost('/api/deliver/send', { itemId: it.id, site: boardData().site || 'doubao' });
   } catch (e) {
     it.state = '❌ ' + e.message;
     renderBoardItems(); saveBoard();
@@ -2783,8 +2795,12 @@ async function openSettings() {
 
 const DELIVER_TARGETS = [
   { id: 'doubao', icon: '🫘', name: '豆包', url: 'https://www.doubao.com/chat/' },
+  { id: 'deepseek', icon: '🐋', name: 'DeepSeek', url: 'https://chat.deepseek.com/' },
   { id: 'pavo', icon: '🎬', name: 'Pavo', url: 'https://app.pavo-ai.work/' },
 ];
+
+/** 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） */
+const siteName = (id) => (DELIVER_TARGETS.find((t) => t.id === id) || { name: '豆包' }).name;
 
 /** 点左侧栏按钮 → 弹出平台菜单 */
 function openDeliverMenu(anchor) {
