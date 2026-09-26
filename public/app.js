@@ -2690,11 +2690,12 @@ function onDeliverEvent(d) {
   }
   if (d.kind === 'read') {
     if (d.state === 'done') {
-      const parts = splitStoryboard(d.result);
+      const parts = splitStoryboard(trimBeforeFirstToken(d.result));
       boardGen.busy = false;
       if (!parts.length) {
         setGenState('取回了内容，但没找到 ### 分隔');
-        toast('没切出分镜 —— 看看 AI 是不是没按 ### 输出', 'warn', 6000);
+        toast('没切出分镜 —— 看看取回来的是什么', 'warn', 6000);
+        showRawReply(d.result, '没切出分镜');
         return;
       }
       boardGenLast = parts;
@@ -2813,6 +2814,29 @@ async function generateStoryboard() {
     setGenState('投递失败：' + e.message);
     toast(e.message, 'err');
   }
+}
+
+/** 去掉第一个 ### 之前的杂质（思考过程有时和回答在同一段文本里） */
+function trimBeforeFirstToken(text) {
+  const s = String(text || '');
+  const i = s.indexOf(BOARD_SPLIT);
+  return i > 0 ? s.slice(i) : s;
+}
+
+/** 切不出分镜时，把取回的原文摊出来看 —— 比翻日志快，也不用猜 */
+function showRawReply(raw, why) {
+  const txt = String(raw || '');
+  showModal(`
+    <h3>⚠️ ${esc(why)}</h3>
+    <div class="modal-sub">
+      取回 ${txt.length} 字，但里面没有 <code>${esc(BOARD_SPLIT)}</code>。
+      多半是取到了 AI 的「思考过程」而不是正式回答；也可能是模型没按格式输出。
+    </div>
+    <pre class="skill-preview">${esc(txt.slice(0, 3000))}${txt.length > 3000 ? '\n\n……（已截断）' : ''}</pre>
+    <div class="modal-actions">
+      <button class="btn" data-close>知道了</button>
+    </div>
+  `);
 }
 
 /** 切好的分镜先给用户过一遍：勾选 + 可改 + 选替换还是追加 */

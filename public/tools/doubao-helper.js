@@ -360,9 +360,29 @@
   }
 
   /**
-   * 抓最后一条**正式回答**。
-   * ⚠️ DeepSeek 那种思考模式会先把"思考过程"渲染出来，它也常常是同一个 class，
-   * 所以从后往前找、并跳过 class 里带 think/reason/cot 的容器 —— 否则取回来的可能是一堆内心戏。
+   * 把已渲染的回复块还原成 Markdown 文本。
+   * ⚠️ 关键坑：AI 输出的 `###` 是 Markdown 标记，页面把它渲染成了 `<h3>` ——
+   * 直接取 innerText **拿不到那三个 #**，于是"按 ### 切分"必然失败。
+   * 所以这里把 h1~h6 的标题行前面补回 `#`，让下游还能按 ### 切。
+   */
+  function blockToMarkdown(el) {
+    const txt = (el.innerText || el.textContent || '').trim();
+    if (!txt || txt.includes('###')) return txt;
+    const heads = Array.from(el.querySelectorAll('h1,h2,h3,h4,h5,h6'))
+      .map((h) => (h.innerText || h.textContent || '').trim())
+      .filter(Boolean);
+    let out = txt;
+    for (const h of heads) {
+      const line = h.split('\n')[0];
+      if (line && out.includes(line)) out = out.replace(line, '### ' + line);
+    }
+    return out;
+  }
+
+  /**
+   * 抓最后一条**正式回答**（并尽量还原 Markdown 标记）。
+   * ⚠️ 思考模式会先把"思考过程"渲染出来，它常常是同一层 class，
+   * 所以从后往前找、并跳过 class 里带 think/reason/cot 的容器。
    */
   function lastReplyText() {
     const sels = (SITE && SITE.reply) || [];
@@ -374,7 +394,7 @@
         const el = nodes[i];
         const cls = String(el.className || '') + ' ' + String((el.parentElement && el.parentElement.className) || '');
         if (/think|reason|\bcot\b/i.test(cls)) continue;         // 跳过思考过程
-        const t = (el.innerText || el.textContent || '').trim();
+        const t = blockToMarkdown(el);
         if (t) return t;
       }
     }
@@ -395,10 +415,24 @@
     return hits.length ? hits[hits.length - 1] : null;
   }
 
+  /**
+   * 点「复制」按钮拿**Markdown 原文**（比抓 DOM 保真：# 号这类标记不会被渲染吃掉）。
+   * 现代页面多半走 `navigator.clipboard.writeText()` —— 那条路**不触发 copy 事件**，
+   * 所以先给 clipboard.writeText 打个猴子补丁把它截下来；页面若用 execCommand 则由 copy 事件兜住。
+   */
   async function readByCopyButton() {
     const btn = findCopyButton();
     if (!btn) return '';
     let captured = '';
+
+    const clip = navigator.clipboard;
+    const origWrite = (clip && typeof clip.writeText === 'function') ? clip.writeText.bind(clip) : null;
+    if (clip && origWrite) {
+      try {
+        clip.writeText = (t) => { captured = String(t == null ? '' : t); return origWrite(t); };
+      } catch { /* 有的环境不让改，忽略，还有下面的 copy 事件 */ }
+    }
+
     const onCopy = (ev) => {
       try {
         const sel = String(window.getSelection() || '');
@@ -407,31 +441,44 @@
       } catch { /* 忽略 */ }
     };
     document.addEventListener('copy', onCopy, true);
+
     try {
       btn.click();
-      await sleep(500);
+      await sleep(600);
     } finally {
       document.removeEventListener('copy', onCopy, true);
+      if (clip && origWrite) { try { clip.writeText = origWrite; } catch { /* 还原失败也无所谓 */ } }
     }
     return captured.trim();
   }
 
-  /** 等回复写完：内容连续 3 次采样（约 4.5 秒）没变化就算写完 */
-  async function waitForReply(timeoutMs) {
+  /**
+   * 等**这一轮的新回复**写完再取。
+   * ⚠️ 关键：进来时页面上可能还挂着上一条回复，所以要先有"基线"，
+   * **只有内容与基线不同**才算这一轮的新回复 ——
+   * 否则会在几秒内"取回"上一条的旧内容（真实踩过：连续两次取回字数一模一样、第二次只花 6 秒）。
+   * 基线优先用 `askBaseline`（ask 发送前记下的），它比"read 开始时的页面内容"更严格：
+   * read 可能在生成中途才开始，那时页面上的内容已经是"新回复的一部分"了。
+   */
+  async function waitForReply(timeoutMs, baselineOverride) {
+    const baseline = baselineOverride || lastReplyText();
     const t0 = Date.now();
-    let last = '', stable = 0;
+    let last = '', stable = 0, seenNew = false;
     while (Date.now() - t0 < timeoutMs) {
       await sleep(1500);
       const cur = lastReplyText();
-      if (cur && cur === last) {
+      // 内容还是基线（旧回复）或为空 → 这一轮的回复还没出来，继续等
+      if (!cur || cur === baseline) { stable = 0; continue; }
+      seenNew = true;
+      if (cur === last) {
         stable++;
-        if (stable >= 3 && cur.length > 10) return cur;
+        if (stable >= 3 && cur.length > 10) return cur;     // 连续 3 次不变 = 写完了
       } else {
         stable = 0;
         last = cur;
       }
     }
-    return last;
+    return seenNew ? last : '';      // 超时：见过新内容就给它，没见过就返回空（调用方会报错）
   }
 
   /** 这个页面能不能干活：有输入框或上传控件才算 —— 豆包云盘/设置这类页面什么也没有 */
@@ -455,6 +502,8 @@
         throw new Error(`当前页面（${pageInfo()}）不是对话/生成页，找不到输入框和上传控件 —— 请切回对话页面再投`);
       }
       if (task.kind === 'ask') {
+        // 记下"发送前"页面上已有的内容：read 阶段靠它区分"这一轮的新回复"和"上一条旧回复"
+        askBaseline = lastReplyText();
         // ① 把"剧情 + 输出要求"写进输入框
         const textOk = task.text ? injectText(task.text) : false;
         if (!textOk) throw new Error('剧情没写进输入框');
@@ -492,16 +541,16 @@
         msg = `已投剧情（${String(task.text || '').length} 字）+ ${files}/${plan.length} 个 skill，已发送`
           + (failed.length ? `；没投进去：${failed.join('、')}` : '');
       } else if (task.kind === 'read') {
-        let text = await waitForReply(180000);
-        // 抓 DOM 抓不到（容器选择器失效）时，退回"点复制按钮 + 截获 copy 事件"
-        if (!text) {
-          log('DOM 没抓到回复，试复制按钮…');
-          text = await readByCopyButton();
-        }
-        if (!text) throw new Error('等了三分钟也没抓到回复内容 —— 确认 AI 已经开始回答');
+        // ① 先等"这一轮的新回复"写完（基线判定，见 waitForReply 注释）
+        const domText = await waitForReply(180000, askBaseline);
+        if (!domText) throw new Error('等了三分钟页面也没出现新回复 —— 确认 AI 已经开始回答');
+        // ② 再点一次「复制」拿 Markdown 原文：# 号这类标记在渲染后的文本里会消失，
+        //    复制出来的才是原文（拿不到就退回上面抓到的 DOM 文本）
+        const raw = await readByCopyButton();
+        const text = raw || domText;
         ok = true;
         result = text;
-        msg = `已取回 ${text.length} 字`;
+        msg = `已取回 ${text.length} 字（${raw ? '复制原文' : 'DOM 文本（标记可能已丢）'}）`;
       } else if (task.kind === 'send') {
         const btn = findSendButton();
         if (btn && !btn.disabled) {
@@ -558,6 +607,7 @@
   }
 
   let deliverTimer = null;
+  let askBaseline = '';      // 上一次 ask 发送前，页面上已有的回复文本（read 用它当基线，防止取到旧内容）
 
   /**
    * 轮询本地服务取任务（setTimeout 链，不会请求堆积）。

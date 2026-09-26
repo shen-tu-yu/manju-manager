@@ -336,11 +336,12 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
 - **指令由前端组装**（`buildAskText`）：剧情 + 「每镜 N 秒」+ 「每段以 `###` 开头，只输出分镜正文」
 - 编排在 `onDeliverEvent` 里：`ask done` → 2.5 秒后入队 `read` → `read done` 带 `result` →
   `splitStoryboard()` 按 `###` 切 → `openStoryboardReview()` 弹预览（勾选 + 可改 + 替换/追加）
-- 脚本侧取回：`lastReplyText()` 抓 `SITE.reply` 里**最后一个正式回答** ——
-  ⚠️ 必须**跳过 class 含 think/reason/cot 的容器**（DeepSeek 的思考过程也是同一层 class，
-  不过滤就会把一堆内心戏当成分镜取回来）；抓不到时退回「点复制按钮 + 截获 copy 事件」
-  （注意：页面若用 `navigator.clipboard.writeText()` 则不触发 copy 事件，所以它只是兜底）。
-  `waitForReply()` 连续 3 次采样（约 4.5 秒）不变才算写完，超时 3 分钟
+- 脚本侧取回：`lastReplyText()` 抓 `SITE.reply` 里**最后一个正式回答**
+  （跳过 class 含 think/reason/cot 的容器），并把它交给 `blockToMarkdown()` **还原 `###` 标记**
+  —— ⚠️ 页面会把 `###` 渲染掉，直接取 `innerText` 是切不出分镜的（见踩坑⑩-9）；
+  抓完再点一次「复制」按钮拿**原文**（`readByCopyButton()`，猴子补丁 `clipboard.writeText`），
+  拿不到才用 DOM 文本。等待用 `waitForReply(timeout, baseline)`：
+  **只有内容与基线不同**才算这一轮的新回复（见踩坑⑩-10）
 - **切好的分镜自动落进条目**（`applyStoryboard`，默认替换），并在 `boardGenUndo` 留底：
   工作台上有「查看」（打开预览改完重填）和「撤销」（回到生成前的条目）两个按钮，
   这样既不用手工勾选、又不会一失手丢掉旧条目
@@ -476,6 +477,18 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
    （有输入框或 `input[type=file]` 才领），`runTask()` 开头再查一次（SPA 可能已跳走）；
    `next` 请求还会带上 `page=<路径>`，后端记进日志，一眼看出任务被哪个页面领走。
    **凡是"第三方页面里执行"的能力，都要先判断"这个页面能不能干"，再决定领不领活**
+9. **AI 网页会把 Markdown 标记渲染掉，抓 `innerText` 拿不到 `###`** ——
+   这是"取回 2615 字却没有 `###`、切出 0 条"的**真正原因**：
+   指令里让 AI 用 `###` 分段，但页面把 `###` 渲染成了 `<h3>`，`innerText` 里只剩标题文字，
+   **那三个 # 已经不存在了**。两手修法（都已实现）：
+   - `blockToMarkdown()`：抓 DOM 时把 `h1~h6` 的标题行前**补回 `###`**，下游照旧能切
+   - `readByCopyButton()`：点页面的「复制」按钮拿 **Markdown 原文**（最保真）。
+     ⚠️ 现代页面走 `navigator.clipboard.writeText()`，**不触发 copy 事件**，
+     所以要先给 `clipboard.writeText` 打猴子补丁截获；`copy` 事件只兜 `execCommand` 那条老路
+10. **取回复必须区分"这一轮"和"上一条"** —— read 一进页面就可能挂着上一条回复，
+   "内容连续 N 次不变就算写完"会**立刻成立**（真实踩过：两次取回字数一模一样、第二次只花 6 秒）。
+   修法：进 read 先拿**基线**（优先用 ask 发送前记下的 `askBaseline`），
+   **只有内容与基线不同**才当成新回复开始计时
 8. **脚本绝不能在 iframe 里干活，但也绝不能在 UserScript 头加 `@noframes`** —— 两个方向都会坏：
    - **不禁 iframe 会坏**：豆包对话页里内嵌 `/drive-iframe/drive/home/`，篡改猴默认把脚本注入**所有 frame**，
      iframe 里那个实例一样轮询、一样抢任务，抢到就必然失败。诊断里 `路径 /drive-iframe/...`
