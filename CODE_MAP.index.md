@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 17:45:09
+> 生成时间：2026/9/26 17:51:16
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -10,7 +10,7 @@
 
 | 文件 | 行数 |
 |---|---|
-| `server.js` | 2113 |
+| `server.js` | 2114 |
 | `db.js` | 179 |
 | `launcher.js` | 236 |
 | `browsers.js` | 211 |
@@ -38,39 +38,39 @@
 | 1296 | GET | `/api/board` |
 | 1306 | POST | `/api/board` |
 | 1328 | GET | `/api/deliver/next` |
-| 1352 | POST | `/api/deliver/done` |
-| 1369 | POST | `/api/deliver/queue` |
-| 1385 | POST | `/api/deliver/send` |
-| 1392 | GET | `/api/deliver/state` |
-| 1402 | GET | `/api/skills/file` |
-| 1420 | GET | `/api/fs/drives` |
-| 1424 | GET | `/api/fs/dirs` |
-| 1443 | GET | `/api/list` |
-| 1475 | GET | `/api/tree` |
-| 1497 | GET | `/api/file` |
-| 1503 | GET | `/api/text` |
-| 1517 | POST | `/api/text` |
-| 1527 | PUT | `/api/upload` |
-| 1556 | POST | `/api/mkdir` |
-| 1568 | POST | `/api/mkdir-template` |
-| 1585 | POST | `/api/rename` |
-| 1600 | POST | `/api/rename-batch` |
-| 1633 | POST | `/api/move` · `/api/copy` |
-| 1668 | POST | `/api/delete` |
-| 1688 | GET | `/api/trash` |
-| 1707 | POST | `/api/trash/restore` |
-| 1733 | POST | `/api/trash/purge` |
-| 1748 | GET | `/api/search` |
-| 1791 | GET | `/api/vgroups` |
-| 1796 | POST | `/api/vgroups` |
-| 1815 | POST | `/api/vgroups/update` |
-| 1827 | POST | `/api/vgroups/assign` |
-| 1845 | POST | `/api/vgroups/delete` |
-| 1859 | POST | `/api/vgroups/materialize` |
-| 1916 | GET | `/api/duplicates` |
-| 1935 | POST | `/api/clipboard` |
-| 1980 | POST | `/api/reveal` |
-| 1998 | GET | `/api/sysinfo` |
+| 1353 | POST | `/api/deliver/done` |
+| 1370 | POST | `/api/deliver/queue` |
+| 1386 | POST | `/api/deliver/send` |
+| 1393 | GET | `/api/deliver/state` |
+| 1403 | GET | `/api/skills/file` |
+| 1421 | GET | `/api/fs/drives` |
+| 1425 | GET | `/api/fs/dirs` |
+| 1444 | GET | `/api/list` |
+| 1476 | GET | `/api/tree` |
+| 1498 | GET | `/api/file` |
+| 1504 | GET | `/api/text` |
+| 1518 | POST | `/api/text` |
+| 1528 | PUT | `/api/upload` |
+| 1557 | POST | `/api/mkdir` |
+| 1569 | POST | `/api/mkdir-template` |
+| 1586 | POST | `/api/rename` |
+| 1601 | POST | `/api/rename-batch` |
+| 1634 | POST | `/api/move` · `/api/copy` |
+| 1669 | POST | `/api/delete` |
+| 1689 | GET | `/api/trash` |
+| 1708 | POST | `/api/trash/restore` |
+| 1734 | POST | `/api/trash/purge` |
+| 1749 | GET | `/api/search` |
+| 1792 | GET | `/api/vgroups` |
+| 1797 | POST | `/api/vgroups` |
+| 1816 | POST | `/api/vgroups/update` |
+| 1828 | POST | `/api/vgroups/assign` |
+| 1846 | POST | `/api/vgroups/delete` |
+| 1860 | POST | `/api/vgroups/materialize` |
+| 1917 | GET | `/api/duplicates` |
+| 1936 | POST | `/api/clipboard` |
+| 1981 | POST | `/api/reveal` |
+| 1999 | GET | `/api/sysinfo` |
 
 ## 三、后端函数 / 常量（60 个函数）
 
@@ -133,9 +133,9 @@
 | 1007 | `collectSkillFiles()` | 递归收模板文件（限深限数，只留白名单扩展名） |
 | 1033 | `normBoardImages()` | / |
 | 1061 | `queueDeliver()` |  |
-| 2044 | `browserInfo()` | 给网页设置面板用：当前选的是谁 + 自动发现的本机浏览器列表 |
-| 2053 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
-| 2100 | `addRoot()` |  |
+| 2045 | `browserInfo()` | 给网页设置面板用：当前选的是谁 + 自动发现的本机浏览器列表 |
+| 2054 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
+| 2101 | `addRoot()` |  |
 
 ## 四、前端函数 / 常量（145 个函数）
 

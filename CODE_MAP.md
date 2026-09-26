@@ -410,6 +410,12 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 6. **失败必须带回页面诊断**：`buttonProbe()` 把输入框 + 可见按钮（tag / class / aria / testid / 坐标）
    列出来，随回执上报 → 后端写进 `debug.log`。这样"找不到元素"这类问题能**一次定位**，
    不用让用户手抄 DOM（踩坑：第三方 DOM 猜不得）
+7. **干不了活的页面不许领任务**（真实踩过）：豆包是 SPA，`/drive-iframe/drive/home/`（云盘页）
+   同样被 `@match` 匹配、同样在轮询 —— 任务被它抢走就必然报"找不到输入框/发送按钮"，
+   表现是"**有时成功有时失败**"。所以 `startDeliverLoop()` 每轮先过 `pageCanWork()`
+   （有输入框或 `input[type=file]` 才领），`runTask()` 开头再查一次（SPA 可能已跳走）；
+   `next` 请求还会带上 `page=<路径>`，后端记进日志，一眼看出任务被哪个页面领走。
+   **凡是"第三方页面里执行"的能力，都要先判断"这个页面能不能干"，再决定领不领活**
 
 ---
 

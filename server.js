@@ -1327,6 +1327,7 @@ const server = http.createServer(async (req, res) => {
     // 助手脚本轮询：取一条待执行的任务（取到即标记 running）
     if (p === '/api/deliver/next' && req.method === 'GET') {
       const site = String(q.get('site') || '');
+      const page = String(q.get('page') || '');      // 脚本上报自己所在的页面路径，便于排查
       const now = Date.now();
       for (const t of deliverTasks.values()) {          // 超时回收：脚本崩了/页面关了，任务不能卡死
         if (t.state === 'running' && now - (t.startedAt || 0) > DELIVER_TIMEOUT_MS) {
@@ -1341,7 +1342,7 @@ const server = http.createServer(async (req, res) => {
       if (!t) return sendJSON(res, 200, { task: null });
       t.state = 'running';
       t.startedAt = now;
-      LOG(`[投放] 脚本领取 ${t.id}（${t.kind}）`);
+      LOG(`[投放] 脚本领取 ${t.id}（${t.kind}${page ? ' · 来自 ' + page : ''}）`);
       sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: 'running', message: '' });
       return sendJSON(res, 200, {
         task: { id: t.id, kind: t.kind, images: t.images || [], prompt: t.prompt || '' },

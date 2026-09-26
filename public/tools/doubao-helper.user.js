@@ -320,10 +320,26 @@
     catch (e) { log('回执失败', e.message); }
   }
 
+  /** 这个页面能不能干活：有输入框或上传控件才算 —— 豆包云盘/设置这类页面什么也没有 */
+  function pageCanWork() {
+    if (findInputBox()) return true;
+    if (findInputs().length) return true;
+    return false;
+  }
+
+  function pageInfo() {
+    return location.pathname + (location.search ? location.search.slice(0, 40) : '');
+  }
+
   async function runTask(task) {
     log('收到任务', task.id, task.kind);
     let ok = false, msg = '', probe = null;
     try {
+      // 双保险：领取时页面能干活，执行时可能已经跳走了（豆包是 SPA）
+      if (!pageCanWork()) {
+        probe = buttonProbe();
+        throw new Error(`当前豆包页面（${pageInfo()}）不是对话/生成页，找不到输入框和上传控件 —— 请切回对话页面再投`);
+      }
       if (task.kind === 'send') {
         const btn = findSendButton();
         if (btn && !btn.disabled) {
@@ -353,15 +369,21 @@
           const input = inputs.find((i) => acceptOk(i, file)) || inputs[0];
           if (!input) {
             probe = buttonProbe();
-            throw new Error('这个页面没有 input[type=file]，投不进去');
+            throw new Error(`当前豆包页面（${pageInfo()}）里没有 input[type=file]，投不进图片`);
           }
           if (!injectToInput(input, [file])) throw new Error('注入图片失败');
           sent++;
           await sleep(500);                        // ← 一张一张来，中间隔 0.5 秒，确保顺序不乱
         }
-        if (task.prompt) injectText(task.prompt);
-        ok = sent > 0 || !!task.prompt;
-        msg = `已投 ${sent} 张图${task.prompt ? ' + 提示词' : ''}，等你点「发送」`;
+        let textOk = false;
+        if (task.prompt) textOk = injectText(task.prompt);
+        // 提示词没投进去就算失败：否则用户以为投好了，一点发送发出个没有提示词的内容
+        if (task.prompt && !textOk) {
+          probe = buttonProbe();
+          throw new Error(`投了 ${sent} 张图，但提示词没写进输入框`);
+        }
+        ok = sent > 0 || textOk;
+        msg = `已投 ${sent} 张图${textOk ? ' + 提示词' : ''}，等你点「发送」`;
       }
     } catch (e) {
       msg = e.message || String(e);
@@ -375,12 +397,25 @@
 
   let deliverTimer = null;
 
-  /** 轮询本地服务取任务（setTimeout 链，不会请求堆积） */
+  /**
+   * 轮询本地服务取任务（setTimeout 链，不会请求堆积）。
+   * ⚠️ **页面干不了活就不领任务** —— 否则豆包云盘页/设置页也会把任务抢走，
+   * 然后在那边报"找不到输入框"（真实踩过：诊断里路径是 /drive-iframe/drive/home/）。
+   */
   function startDeliverLoop() {
     if (deliverTimer || !IS_TARGET) return;
+    let idleCount = 0;
     const tick = async () => {
+      if (!pageCanWork()) {
+        idleCount++;
+        if (idleCount % 8 === 1) log('当前页面没法投放，暂停领任务：', pageInfo());
+        deliverTimer = setTimeout(tick, 1200);
+        return;
+      }
+      idleCount = 0;
       try {
-        const r = await getJSON(`${FM}/api/deliver/next?site=${encodeURIComponent(SITE.id)}`);
+        const r = await getJSON(`${FM}/api/deliver/next?site=${encodeURIComponent(SITE.id)}`
+          + `&page=${encodeURIComponent(pageInfo())}`);
         if (r && r.task) await runTask(r.task);
       } catch { /* 服务没开 / 断网：下一轮再试，不刷日志 */ }
       deliverTimer = setTimeout(tick, 1200);
