@@ -2180,6 +2180,7 @@ function renderSkillNode(parent, node, depth, dir) {
 async function renderSkills() {
   const box = $('#skillList');
   if (!box) return;
+  boardSkillsDone = false;   // 技能目录变了 → 工作台里的 skill 树下次重拉
   box.innerHTML = '<div class="tree-row dim">加载中…</div>';
   let data;
   try { data = await api('/api/skills'); }
@@ -2259,6 +2260,7 @@ async function previewSkill(dir, f) {
 
 let boardEl = null;
 let boardSaveTimer = null;
+let boardSkillsDone = false;   // skill 树只在第一次打开工作台时拉一次（见 renderBoard 里的注释）
 
 const BOARD_IMAGES_MAX = 12;   // 和 server.js 的 BOARD_IMAGES_MAX 保持一致
 
@@ -2531,7 +2533,9 @@ function renderBoard() {
   }
   renderBoardSecs();
   renderBoardItems();
-  renderBoardSkills();
+  // skill 树只在第一次打开时拉一次：它只在挂载/移除技能目录时才变，
+  // 每 renderBoard 都拉会把接口刷爆（debug.log 里被 GET /api/skills 刷屏过）
+  if (!boardSkillsDone) { boardSkillsDone = true; renderBoardSkills(); }
 }
 
 function renderBoardSecs() {

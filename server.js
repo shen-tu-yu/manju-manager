@@ -1086,8 +1086,11 @@ const server = http.createServer(async (req, res) => {
   const p = parsed.pathname;
   const q = parsed.searchParams;
 
-  // 排查用：记下每一个写操作请求（/api/file 是图片流、/api/events 是长连接，太频繁，跳过）
-  if (p.startsWith('/api/') && p !== '/api/file' && p !== '/api/events') LOG(`${req.method} ${p}`);
+  // 排查用：记下每一个写操作请求。
+  // /api/file 是图片流、/api/events 是长连接、/api/deliver/next 是脚本 1.2 秒一次的轮询
+  // —— 这三个太频繁，记下来会把 debug.log 刷成垃圾场，跳过。
+  const QUIET = new Set(['/api/file', '/api/events', '/api/deliver/next']);
+  if (p.startsWith('/api/') && !QUIET.has(p)) LOG(`${req.method} ${p}`);
 
   // 只允许豆包域名跨域读这个本地服务（给浏览器扩展用）。
   // 用白名单而不是 *，否则任何网页都能读你硬盘上的东西。

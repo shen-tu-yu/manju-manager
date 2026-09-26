@@ -234,8 +234,18 @@
     el.dispatchEvent(new KeyboardEvent('keyup', o));
   }
 
-  /** 发送按钮：按 aria-label / data-testid / class / 文本 打分；找不到返回 null（不瞎点） */
+  /** 发送按钮：先用豆包实测到的精确选择器，再按属性打分兜底；找不到返回 null（不瞎点） */
   function findSendButton() {
+    // ① 实测过的精确选择器（豆包：#flow-end-msg-send / data-testid / aria-label 三件套，
+    //    由用户从 DevTools 里给出来的，比打分可靠得多）
+    const exacts = document.querySelectorAll(
+      '#flow-end-msg-send, [data-testid="chat_input_send_button"], button[aria-label="发送"]');
+    for (const el of exacts) {
+      if (el.disabled) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return el;
+    }
+    // ② 打分兜底：其它站点 / 豆包改版
     const list = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="send"], [class*="send" i]'));
     let best = null, bestScore = 0;
     for (const el of list) {
