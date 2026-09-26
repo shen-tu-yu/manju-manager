@@ -23,8 +23,12 @@ const path = require('path');
 
 const ROOT = __dirname;
 const OUT = path.join(ROOT, 'CODE_MAP.index.md');
+// 从 server.js 拆出去的模块：lib/ 下有几个 .js 就收几个 —— 以后新增模块**不用改这里**
+const LIB = fs.existsSync(path.join(ROOT, 'lib'))
+  ? fs.readdirSync(path.join(ROOT, 'lib')).filter((f) => f.endsWith('.js')).sort().map((f) => 'lib/' + f)
+  : [];
 const SOURCES = ['server.js', 'db.js', 'launcher.js', 'browsers.js',
-  'public/app.js', 'public/index.html', 'public/style.css'];
+  'public/app.js', 'public/index.html', 'public/style.css', ...LIB];
 
 /** 函数定义 / 常量定义 */
 const RE_FUNC = /^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/;
@@ -152,12 +156,14 @@ function build() {
     }
   }
 
-  // 其余模块（数据层 / 启动器 / 浏览器发现）—— 加了新模块就往这个列表里补一个文件名
-  const OTHERS = ['db.js', 'launcher.js', 'browsers.js'];
+  // 其余模块（数据层 / 启动器 / 浏览器发现 / 拆出去的子模块）
+  // —— 加新模块只要放进 SOURCES/LIB，这里跟着走：OTHERS 与 SOURCES 同源
+  const OTHERS = ['db.js', 'launcher.js', 'browsers.js', ...LIB];
+  const NUM = ['五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五'];
   OTHERS.forEach((rel, idx) => {
     const m = scanned[rel];
     if (!m) return;
-    out.push(`## ${['五', '六', '七', '八'][idx] || '附'}、${rel}（${m.lines} 行）`);
+    out.push(`## ${NUM[idx] || '附'}、${rel}（${m.lines} 行）`);
     out.push('');
     out.push('| 行 | 名字 | 说明 |');
     out.push('|---|---|---|');

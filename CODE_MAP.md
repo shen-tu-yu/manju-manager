@@ -21,6 +21,10 @@
 | 文件 | 唯一职责 | **不该出现** |
 |---|---|---|
 | `server.js` | HTTP 服务、路由分发、文件系统 IO、外部命令、收件箱监听 | 业务规则、界面文案 |
+| `lib/filetypes.js` | 扩展名 → 类型 / MIME（纯函数） | 任何 IO、全局状态 |
+| `lib/deliver.js` | 投放通道：内存任务队列 + 脚本轮询 / 回执 | 落盘（任务**不持久化**）、路由分发 |
+| `lib/board.js` | 提示词工作台：数据读写 + 配图归一 | 路由分发、界面文案 |
+| `lib/skills.js` | 技能目录：挂载 / 列出 / 读模板 | 自己拼路径（**必须走注入的 `resolveSafe`**） |
 | `db.js` | SQLite 存取（Node 内置 `node:sqlite`，零依赖） | HTTP 概念、路径安全 |
 | `public/app.js` | 界面逻辑 | 直接拼 API URL（**待改，41 处**） |
 | `public/index.html` | DOM 骨架 | 逻辑 |
@@ -31,13 +35,19 @@
 
 **依赖方向**：`界面 → HTTP API → db.js → data.db`，**单向**。
 
+**`lib/` 的拆法**（以后接着拆就照这个来）：模块用**工厂函数**导出，依赖
+（`sendJSON` / `readJson` / `DB` / `LOG` / `HttpError` / `resolveSafe` / `toRel`…）由 `server.js`
+**显式注入**；模块自己不 require 全局、不留隐藏状态。`config` 这种会被整体重赋值的全局，
+必须传取值函数 **`getConfig: () => config`** —— 传快照（`config` 对象本身）会在改完设置后变成旧的。
+**路由一律留在 `server.js` 的 `if` 链里**（顺序敏感，别按路径长度重排），`lib/` 只放 handler 本体。
+
 ---
 
-## 二、后端（`server.js`）
+## 二、后端（`server.js` + `lib/`）
 
 ### 2.1 路由
 
-**37 个分支全在 `http.createServer` 那一个函数里**（行号见索引）。按功能分四块：
+**所有分支都在 `http.createServer` 那一个函数里**（分支数与行号见索引，自动统计）。按功能分四块：
 
 | 块 | 路由 |
 |---|---|
@@ -51,6 +61,11 @@
 | 回收站 | `GET /api/trash`、`POST /api/trash/restore`、`POST /api/trash/purge` |
 | 搜索 / 杂项 | `GET /api/search`、`GET /api/duplicates`、`POST /api/clipboard`、`POST /api/reveal`、`GET /api/sysinfo` |
 | 虚拟分类 | `GET·POST /api/vgroups`、`/api/vgroups/update`、`/assign`、`/delete`、`/materialize` |
+
+> 上表里 **技能目录 / 提示词工作台 / 投放通道** 三块已经拆进 `lib/`：`server.js` 里只剩
+> `if (p === …) return await xxx.yyy(req, res)` 这种**薄转发**（本体在 `lib/skills.js` /
+> `lib/board.js` / `lib/deliver.js`）。⚠️ 转发**必须 `await`** —— 漏了的话 handler 里抛的
+> `HttpError` 会变成 unhandled rejection，直接绕过下面那个统一错误处理（状态码全乱）。
 
 ### 2.2 核心内部函数（改一个影响一片，必须全量回归）
 
@@ -305,10 +320,14 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
   **外部文件拖入不在这里处理**（`isFileDrag` 直接 return，留给上传逻辑）
 - **配图是数组**（`item.images`，**一条提示词可以配多张图**）：`assignBoardImages()` 往目标条目
   **追加**（不是覆盖），同 `root+path` 去重，每条上限 `BOARD_IMAGES_MAX = 12`
-  —— ⚠️ 这个常量**前端和 server.js 各有一份，改要一起改**。
-  后端 `normBoardImages()` 统一负责"数组化 + 去重 + 限数 + **老的单图字段 `image` 自动升级成数组**"，
+  —— ⚠️ 这个常量**前端 `public/app.js` 和 `lib/board.js` 各有一份，改要一起改**。
+  后端 `lib/board.js` 的 `normBoardImages()` 统一负责"数组化 + 去重 + 限数 + **老的单图字段 `image` 自动升级成数组**"，
   所以任何入口写进去的配图都会被规整
 - 拖到空白处 → 加到**第一条还没配图的**条目；都没有就新建一条
+- **点击引用**（`refBoardImage()`）：点一下某条的「拖图进来」框把它设成**引用目标**
+  （`S.boardRef`，**只在内存里、不写盘** —— 刷新后回到默认），之后点上面条目的缩略图，
+  这张图就**按点击顺序追加**进目标条目；没设目标时沿用上面那条"第一条还没配图的"规矩。
+  ⚠️ 缩略图右上角的 `×`（移除）**必须 `stopPropagation()`** —— 否则会连带触发"引用"
 - ⚠️ 条目 textarea 的 `oninput` **只 `saveBoard()`，绝不 `renderBoard()`** —— 重渲染会重建 textarea，
   用户的输入和光标都会丢
 - skill 勾选树复用 `buildSkillTree()` / `skillByName`（和左侧「技能」分区同一套层级规则，

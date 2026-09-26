@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 22:47:20
+> 生成时间：2026/9/26 22:53:14
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -17,6 +17,10 @@
 | `public/app.js` | 4706 |
 | `public/index.html` | 156 |
 | `public/style.css` | 995 |
+| `lib/board.js` | 94 |
+| `lib/deliver.js` | 160 |
+| `lib/filetypes.js` | 52 |
+| `lib/skills.js` | 113 |
 
 ## 二、后端路由（49 个分支，全在 `http.createServer` 里）
 
@@ -419,4 +423,27 @@
 | 151 | `discoverUnix()` | 非 Windows：给几个常见位置（macOS / Linux） |
 | 168 | `discover()` | 列出本机浏览器：[{ name, path, source }]，按可靠度去重 |
 | 194 | `resolve()` | / |
+
+## 八、lib/board.js（94 行）
+
+| 行 | 名字 | 说明 |
+|---|---|---|
+| 18 | `normBoardImages()` | / |
+
+## 九、lib/deliver.js（160 行）
+
+| 行 | 名字 | 说明 |
+|---|---|---|
+
+## 十、lib/filetypes.js（52 行）
+
+| 行 | 名字 | 说明 |
+|---|---|---|
+| 40 | `extOf()` |  |
+| 42 | `kindOf()` |  |
+
+## 十一、lib/skills.js（113 行）
+
+| 行 | 名字 | 说明 |
+|---|---|---|
 
