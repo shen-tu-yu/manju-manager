@@ -686,15 +686,15 @@ body.dragging { cursor: grabbing; }
   background: rgba(6, 9, 14, .58); backdrop-filter: blur(1.5px);
 }
 .ingest-card {
-  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1100;
+  position: fixed; z-index: 1100;      /* 位置/尺寸由 JS（floatable）管：能拖能缩能记住 */
   width: 560px; max-width: calc(100vw - 48px);
   background: var(--panel-2); border: 1px solid var(--accent);
   border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, .6);
   overflow: hidden; animation: ig-in .18s ease-out;
 }
 @keyframes ig-in {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(.97); }
-  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  from { opacity: 0; transform: scale(.97); }
+  to { opacity: 1; transform: scale(1); }
 }
 .ingest-card .ig-head {
   padding: 11px 16px; background: var(--accent-soft);
@@ -766,6 +766,20 @@ body.dragging { cursor: grabbing; }
   white-space: pre-wrap; word-break: break-word;
 }
 
+/* ===================== 浮层通用（能拖 / 能缩 / 能记住） =====================
+   事件实现在 app.js 的 `floatable()`；这里只做视觉提示：
+   · 右下角两道斜线 = "这里能拉大小"（真的拖动区在右下角 20px 内）
+   · 标题栏光标变 move = "能拖着走"；双击标题栏 = 最大化/还原
+   ⚠️ 位置和尺寸一律由 JS 设，CSS **不许**再写 left/top/width/height，否则跟拖动打架 */
+[data-float-key]::after {
+  content: ''; position: absolute; right: 3px; bottom: 3px; width: 11px; height: 11px;
+  border-right: 2px solid rgba(255, 255, 255, .3);
+  border-bottom: 2px solid rgba(255, 255, 255, .3);
+  border-bottom-right-radius: 3px; pointer-events: none;
+}
+[data-float-key] > .pb-head, [data-float-key] > .sbr-head,
+[data-float-key] > .ig-head, [data-float-key] > h3 { cursor: move; }
+
 /* ===================== 提示词工作台 ===================== */
 .pboard {
   position: fixed; z-index: 1080; display: flex; flex-direction: column;
@@ -773,8 +787,7 @@ body.dragging { cursor: grabbing; }
   border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); overflow: hidden;
 }
 .pboard.hidden { display: none; }
-.pboard.big { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1180px, 94vw); height: min(780px, 88vh); }
-.pboard.small { right: 16px; bottom: 16px; width: 340px; max-height: 62vh; }
+.pboard.small { min-width: 300px; }     /* 小窗只是内部布局简化，尺寸照样能拖能缩 */
 
 .pb-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--accent-soft); border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .pb-head b { font-size: 13.5px; }
@@ -789,10 +802,10 @@ body.dragging { cursor: grabbing; }
 
 /* ===================== 📄 分镜原文窗口 =====================
    ⚠️ 层级 1090 —— **比提示词工作台（1080）高**：它要盖在工作台上面，不能被别的面板压住。
-   这是"先贴完整原文、再分割"的落点：分割只读它，原文不会被切分动作覆盖。 */
+   这是"先贴完整原文、再分割"的落点：分割只读它，原文不会被切分动作覆盖。
+   位置和尺寸由 JS（floatable）管：能拖、能缩、能记住。 */
 .sbraw {
-  position: fixed; z-index: 1090; left: 50%; top: 14px; transform: translateX(-50%);
-  width: min(1180px, 94vw); height: min(52vh, 520px);
+  position: fixed; z-index: 1090;
   display: flex; flex-direction: column;
   background: var(--panel-2); border: 1px solid var(--accent);
   border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); overflow: hidden;

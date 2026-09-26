@@ -422,6 +422,39 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
 `#lightbox`（900）、`#toasts`（1000）、`.up-bar`（1000）当时也都在工作台下面，同一个毛病的四个受害者。
 **规矩：任何"盖住整屏"的东西（模态框 / 灯箱 / 提示 / 进度）都必须高于浮层面板。**
 
+### 3.14 浮层通用：能拖 / 能缩 / 能记住（`floatable()`）
+
+用户要求"**弹窗都这样写**" —— 所以位置尺寸**一律由这一套管，CSS 不许再写死**：
+
+```js
+floatable(el, { key, handle, defW, defH, minW, minH })
+```
+
+- **拖**：按在 `handle`（标题栏）上拖 → 改 `left/top`
+- **缩**：按在**右下角 20px 内**拖 → 改 `width/height`（`.fl`/视觉提示见 style.css 的 `[data-float-key]::after` 两道斜线）
+- **最大化**：双击标题栏（**不落盘**，否则下次打开会卡在最大化、还原不回去）
+- **记住**：位置尺寸进 `localStorage['mja-float-layout']`，按 `key` 分；刷新后还在
+- **夹回**：`clampFloatLayout()` 保证不小于最小尺寸、不超过视口、**至少留 80px 在屏幕里**（拖出去还能抓回来）；
+  浏览器窗口变小时 `FLOAT_LIVE` 名单里的浮层统一重新套用（resize 节流 150ms）
+- **高度 `0` = 自适应**（模态框内容长短不一）；用户拉过高度就把 CSS 的 `max-height` 让开（`none`）
+
+**已经接上的四处**（再加新弹窗照抄就行）：
+
+| 谁 | key | 说明 |
+|---|---|---|
+| 提示词工作台 `.pboard` | `pboard` / `pboardSmall` | 大窗、小窗**各记一套**布局，`toggleBoardSize()` 用 `setKey` 切 |
+| 📄 原文窗口 `.sbraw` | `sbraw` | |
+| **所有 `showModal` 弹窗** `#modalBox` | `modal` | 共用一套位置尺寸；`showModal()` 里调 |
+| 新文件入库卡片 `.ingest-card` | `ingest` | |
+
+⚠️ **三条必须守住的实现细节**（都栽过或差点栽）：
+1. **事件挂在浮层根元素上（委托），不许挂标题栏节点** —— 模态框每次 `showModal` 都重建 `innerHTML`，
+   挂子节点上必失效
+2. **`floatable` 必须幂等**（`if (el.__float) return`）—— `showModal` 会反复调，重复绑事件会拖动加倍
+3. **还原用的那份布局挂在控制器 `ctl.max` 上**，不能挂在 `ctl.lay` 上：最大化时 `ctl.lay` 被换成
+   最大化对象，挂在旧对象上的还原信息就跟着丢了（真实踩过：双击第二次还原不回去）
+   —— 右下角的按钮（`.modal-actions`）正好在抓手范围内，所以缩放前要**先排除按钮/输入框**
+
 ---
 
 ## 四、⚠️ 踩坑记录（真实发生过的，别再犯）

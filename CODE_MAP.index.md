@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 19:32:49
+> 生成时间：2026/9/26 19:38:34
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -14,9 +14,9 @@
 | `db.js` | 179 |
 | `launcher.js` | 236 |
 | `browsers.js` | 211 |
-| `public/app.js` | 4284 |
+| `public/app.js` | 4461 |
 | `public/index.html` | 156 |
-| `public/style.css` | 947 |
+| `public/style.css` | 960 |
 
 ## 二、后端路由（49 个分支，全在 `http.createServer` 里）
 
@@ -137,7 +137,7 @@
 | 2120 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
 | 2167 | `addRoot()` |  |
 
-## 四、前端函数 / 常量（168 个函数）
+## 四、前端函数 / 常量（174 个函数）
 
 | 行 | 名字 | 说明 |
 |---|---|---|
@@ -231,84 +231,90 @@
 | 1881 | `flushHeldInbox()` | 一批上传全部落定后再开始弹卡片，避免传到一半就跳出来 |
 | 1889 | `showNextIngest()` | 一次只弹一张卡片，处理完自动弹下一张 |
 | 1896 | `openIngestCard()` |  |
-| 2019 | `openAddRootDialog()` | / |
-| 2124 | `buildSkillTree()` | 把服务端给的扁平文件列表（rel 形如 `漫剧/分镜.md`）构造成树 |
-| 2147 | `renderSkillNode()` | / |
-| 2180 | `renderSkills()` |  |
-| 2240 | `previewSkill()` | 看一份模板的内容（投放前确认用） |
-| 2278 | `boardData()` |  |
-| 2302 | `migrateBoard()` | / |
-| 2314 | `askPresetText()` | 当前预设要用的正文：预设库 → 内置默认 |
-| 2321 | `saveBoard()` | 存盘（防抖 600ms；传 true 立刻存） |
-| 2339 | `openBoard()` |  |
-| 2369 | `closeBoard()` |  |
-| 2376 | `toggleBoardSize()` | 放大 ↔ 缩小（Esc 就是调它；缩小态是右下小框，能继续接拖进来的图片） |
-| 2389 | `buildBoard()` |  |
-| 2507 | `assignBoardImages()` | / |
-| 2533 | `renderBoardItems()` |  |
-| 2594 | `renderBoard()` |  |
-| 2614 | `renderBoardSecs()` |  |
-| 2627 | `renderBoardSkills()` |  |
-| 2652 | `renderSkillPick()` | skill 选择树（和左侧技能分区同一套层级规则：缩进 + 折叠感） |
-| 2688 | `deliverItem()` | 投放这一条：图 + 提示词入队 |
-| 2711 | `sendItem()` | 让助手脚本去点豆包的发送按钮 |
-| 2723 | `onDeliverEvent()` | 助手脚本的回执（走 SSE）→ 更新对应条目的状态 |
-| 2848 | `buildAskText()` | 把预设指令渲染成真正要投出去的那段文字 |
-| 2860 | `openAskTemplateEditor()` | / |
-| 2981 | `sbBoundary()` | 切分边界：优先 ###，其次「大分镜N」标题行（内容兜底，见 SB_HEAD_RE） |
-| 2990 | `countBigShots()` | 主判据是「大分镜N｜」标题行；模型连标题都没写时，退一步数【小分镜】的段数。 |
-| 2998 | `splitStoryboard()` | 把 AI 的回复切成一条条。返回 `{parts, mode}`：mode 说明这次按什么切的 |
-| 3005 | `setGenState()` |  |
-| 3012 | `syncGenButtons()` | 「查看」「撤销」只在有内容时出现 |
-| 3022 | `applyStoryboard()` | 把切好的分镜落进条目（**自动**；留底供撤销） |
-| 3035 | `undoStoryboard()` |  |
-| 3045 | `generateStoryboard()` |  |
-| 3067 | `trimBeforeFirstToken()` | 去掉第一个边界之前的杂质（思考过程有时和回答在同一段文本里） |
-| 3085 | `buildRawWindow()` |  |
-| 3128 | `openRawWindow()` |  |
-| 3136 | `closeRawWindow()` |  |
-| 3143 | `setRawReply()` | 把这一轮取回的**完整原文**放进来（**不覆盖**旧原文：旧的进 rawHistory） |
-| 3161 | `renderRawWindow()` | 窗口内容与层级摘要（每次刷新都从"当前文本"现算，不缓存） |
-| 3177 | `renderRawHist()` | 原文历史下拉（新的在前；"当前"永远是第 0 项） |
-| 3191 | `renderRawMeta()` | meta + 层级树：几个大分镜、每个大分镜里几个小分镜（"层级要明确"） |
-| 3208 | `setRawFoot()` |  |
-| 3215 | `copyRawWindow()` |  |
-| 3227 | `splitFromRawWindow()` | ✂ 用窗口里的文本切条 —— 这是**唯一的**分割入口（生成后自动走一次，手动重切也走它） |
-| 3253 | `describeRaw()` | 这份原文的层级：几个大分镜、每个里头几个小分镜（小分镜行 = 行首的 "0-5s｜…" / "1. 0-5s｜…"） |
-| 3268 | `openStoryboardReview()` | 切好的分镜先给用户过一遍：勾选 + 可改 + 选替换还是追加 |
-| 3305 | `showModal()` |  |
-| 3311 | `closeModal()` |  |
-| 3318 | `openSettings()` |  |
-| 3440 | `checkMjaInstalled()` | / |
-| 3469 | `openDeliverPanel()` | / |
-| 3570 | `openHelp()` |  |
-| 3598 | `onSearchInput()` |  |
-| 3610 | `doSearch()` |  |
-| 3631 | `showCtxMenu()` |  |
-| 3691 | `renderCtxMenu()` |  |
-| 3710 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
-| 3743 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
-| 3759 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
-| 3776 | `hideCtxMenu()` |  |
-| 3778 | `revealInExplorer()` |  |
-| 3785 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
-| 3794 | `checkDuplicates()` |  |
-| 3810 | `showDragGhost()` |  |
-| 3819 | `moveDragGhost()` |  |
-| 3825 | `hideDragGhost()` |  |
-| 3829 | `setDropHints()` |  |
-| 3835 | `clearDropTargets()` |  |
-| 3843 | `isFileDrag()` | / |
-| 3860 | `dragKind()` | / |
-| 3871 | `bindEvents()` | / |
-| 3882 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
-| 3912 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
-| 3937 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
-| 3959 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
-| 4010 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
-| 4038 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
-| 4181 | `bindKeyboardEvents()` | / |
-| 4261 | `init()` |  |
+| 2021 | `openAddRootDialog()` | / |
+| 2126 | `buildSkillTree()` | 把服务端给的扁平文件列表（rel 形如 `漫剧/分镜.md`）构造成树 |
+| 2149 | `renderSkillNode()` | / |
+| 2182 | `renderSkills()` |  |
+| 2242 | `previewSkill()` | 看一份模板的内容（投放前确认用） |
+| 2280 | `boardData()` |  |
+| 2304 | `migrateBoard()` | / |
+| 2316 | `askPresetText()` | 当前预设要用的正文：预设库 → 内置默认 |
+| 2323 | `saveBoard()` | 存盘（防抖 600ms；传 true 立刻存） |
+| 2341 | `openBoard()` |  |
+| 2372 | `closeBoard()` |  |
+| 2380 | `applyBoardLayout()` | 工作台的「大窗 / 小窗」各记一套布局 —— 两种模式都能拖能缩（用户要求） |
+| 2390 | `toggleBoardSize()` |  |
+| 2404 | `buildBoard()` |  |
+| 2523 | `assignBoardImages()` | / |
+| 2549 | `renderBoardItems()` |  |
+| 2610 | `renderBoard()` |  |
+| 2630 | `renderBoardSecs()` |  |
+| 2643 | `renderBoardSkills()` |  |
+| 2668 | `renderSkillPick()` | skill 选择树（和左侧技能分区同一套层级规则：缩进 + 折叠感） |
+| 2704 | `deliverItem()` | 投放这一条：图 + 提示词入队 |
+| 2727 | `sendItem()` | 让助手脚本去点豆包的发送按钮 |
+| 2739 | `onDeliverEvent()` | 助手脚本的回执（走 SSE）→ 更新对应条目的状态 |
+| 2864 | `buildAskText()` | 把预设指令渲染成真正要投出去的那段文字 |
+| 2876 | `openAskTemplateEditor()` | / |
+| 2997 | `sbBoundary()` | 切分边界：优先 ###，其次「大分镜N」标题行（内容兜底，见 SB_HEAD_RE） |
+| 3006 | `countBigShots()` | 主判据是「大分镜N｜」标题行；模型连标题都没写时，退一步数【小分镜】的段数。 |
+| 3014 | `splitStoryboard()` | 把 AI 的回复切成一条条。返回 `{parts, mode}`：mode 说明这次按什么切的 |
+| 3021 | `setGenState()` |  |
+| 3028 | `syncGenButtons()` | 「查看」「撤销」只在有内容时出现 |
+| 3038 | `applyStoryboard()` | 把切好的分镜落进条目（**自动**；留底供撤销） |
+| 3051 | `undoStoryboard()` |  |
+| 3061 | `generateStoryboard()` |  |
+| 3083 | `trimBeforeFirstToken()` | 去掉第一个边界之前的杂质（思考过程有时和回答在同一段文本里） |
+| 3101 | `buildRawWindow()` |  |
+| 3148 | `openRawWindow()` |  |
+| 3156 | `closeRawWindow()` |  |
+| 3163 | `setRawReply()` | 把这一轮取回的**完整原文**放进来（**不覆盖**旧原文：旧的进 rawHistory） |
+| 3181 | `renderRawWindow()` | 窗口内容与层级摘要（每次刷新都从"当前文本"现算，不缓存） |
+| 3197 | `renderRawHist()` | 原文历史下拉（新的在前；"当前"永远是第 0 项） |
+| 3211 | `renderRawMeta()` | meta + 层级树：几个大分镜、每个大分镜里几个小分镜（"层级要明确"） |
+| 3228 | `setRawFoot()` |  |
+| 3235 | `copyRawWindow()` |  |
+| 3247 | `splitFromRawWindow()` | ✂ 用窗口里的文本切条 —— 这是**唯一的**分割入口（生成后自动走一次，手动重切也走它） |
+| 3273 | `describeRaw()` | 这份原文的层级：几个大分镜、每个里头几个小分镜（小分镜行 = 行首的 "0-5s｜…" / "1. 0-5s｜…"） |
+| 3288 | `openStoryboardReview()` | 切好的分镜先给用户过一遍：勾选 + 可改 + 选替换还是追加 |
+| 3346 | `floatLayouts()` | 读全部浮层布局（坏了 / 隐私模式写不了 → 当没有，不影响使用） |
+| 3349 | `readFloatLayout()` |  |
+| 3353 | `saveFloatLayout()` |  |
+| 3366 | `clampFloatLayout()` | / |
+| 3380 | `floatable()` | / |
+| 3480 | `showModal()` |  |
+| 3488 | `closeModal()` |  |
+| 3495 | `openSettings()` |  |
+| 3617 | `checkMjaInstalled()` | / |
+| 3646 | `openDeliverPanel()` | / |
+| 3747 | `openHelp()` |  |
+| 3775 | `onSearchInput()` |  |
+| 3787 | `doSearch()` |  |
+| 3808 | `showCtxMenu()` |  |
+| 3868 | `renderCtxMenu()` |  |
+| 3887 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
+| 3920 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
+| 3936 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
+| 3953 | `hideCtxMenu()` |  |
+| 3955 | `revealInExplorer()` |  |
+| 3962 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
+| 3971 | `checkDuplicates()` |  |
+| 3987 | `showDragGhost()` |  |
+| 3996 | `moveDragGhost()` |  |
+| 4002 | `hideDragGhost()` |  |
+| 4006 | `setDropHints()` |  |
+| 4012 | `clearDropTargets()` |  |
+| 4020 | `isFileDrag()` | / |
+| 4037 | `dragKind()` | / |
+| 4048 | `bindEvents()` | / |
+| 4059 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
+| 4089 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
+| 4114 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
+| 4136 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
+| 4187 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
+| 4215 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
+| 4358 | `bindKeyboardEvents()` | / |
+| 4438 | `init()` |  |
 
 ### 前端顶层常量
 
@@ -335,22 +341,27 @@
 | 229 | `Thumb` |  |
 | 341 | `thumbQueue` |  |
 | 351 | `lazyObs` |  |
-| 2139 | `skillByName` |  |
-| 2140 | `skillCount` |  |
-| 2268 | `BOARD_IMAGES_MAX` |  |
-| 2270 | `newBoardItem` |  |
-| 2276 | `boardImageCount` | 整块板子上总共配了多少张图 |
-| 2295 | `RAW_HISTORY_MAX` |  |
-| 2296 | `newPresetId` |  |
-| 2789 | `BOARD_SPLIT` | ---------- 用文本 AI（DeepSeek）生成分镜：投剧情 + skill → 取回 → 按 ### 切条 → 预览挑 -----… |
-| 2796 | `SB_HEAD` | / |
-| 2797 | `SB_HEAD_RE` |  |
-| 2806 | `DEFAULT_ASK_TEMPLATE` | / |
-| 3019 | `cloneItems` |  |
-| 3420 | `DELIVER_TARGETS` |  |
-| 3427 | `siteName` | 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） |
-| 3430 | `DELIVER_KEY` | 记住上次选的投放平台（脚本一份通用，选哪个只是决定"打开"按钮开谁） |
-| 3431 | `deliverSite` |  |
+| 2141 | `skillByName` |  |
+| 2142 | `skillCount` |  |
+| 2270 | `BOARD_IMAGES_MAX` |  |
+| 2272 | `newBoardItem` |  |
+| 2278 | `boardImageCount` | 整块板子上总共配了多少张图 |
+| 2297 | `RAW_HISTORY_MAX` |  |
+| 2298 | `newPresetId` |  |
+| 2805 | `BOARD_SPLIT` | ---------- 用文本 AI（DeepSeek）生成分镜：投剧情 + skill → 取回 → 按 ### 切条 → 预览挑 -----… |
+| 2812 | `SB_HEAD` | / |
+| 2813 | `SB_HEAD_RE` |  |
+| 2822 | `DEFAULT_ASK_TEMPLATE` | / |
+| 3035 | `cloneItems` |  |
+| 3331 | `FLOAT_KEY` |  |
+| 3332 | `FLOAT_GRIP` |  |
+| 3333 | `FLOAT_HINT` |  |
+| 3336 | `FLOAT_LIVE` | 装好的浮层（同一个 key 只留最新的一个），窗口变小后统一夹回视口内 |
+| 3360 | `clampNum` |  |
+| 3597 | `DELIVER_TARGETS` |  |
+| 3604 | `siteName` | 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） |
+| 3607 | `DELIVER_KEY` | 记住上次选的投放平台（脚本一份通用，选哪个只是决定"打开"按钮开谁） |
+| 3608 | `deliverSite` |  |
 
 ## 五、db.js（179 行）
 

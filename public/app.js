@@ -1971,6 +1971,8 @@ async function openIngestCard(item) {
   mask.className = 'ig-mask';
   document.body.appendChild(mask);
   document.body.appendChild(card);
+  // 入库卡片也能拖能缩能记住（抓标题栏拖、右下角改大小、双击标题栏最大化）
+  floatable(card, { key: 'ingest', handle: '.ig-head', defW: 560, minW: 380, minH: 200 });
   {   // 选中"这次拖到的文件夹"（value 是 index，DOM 插好才能赋值）
     const selEl = $('#igTarget');
     if (selEl) selEl.value = String(sel);
@@ -2363,6 +2365,7 @@ async function openBoard() {
   boardEl.classList.remove('hidden');
   boardEl.querySelector('#pbScript').value = d.script;
   renderBoard();
+  applyBoardLayout();                  // 每次打开都套用记住的位置/尺寸
   if (d.rawOpen) openRawWindow();      // 上次开着「📄 原文」就一起恢复（原文是持久化的）
 }
 
@@ -2373,12 +2376,24 @@ function closeBoard() {
 }
 
 /** 放大 ↔ 缩小（Esc 就是调它；缩小态是右下小框，能继续接拖进来的图片） */
+/** 工作台的「大窗 / 小窗」各记一套布局 —— 两种模式都能拖能缩（用户要求） */
+function applyBoardLayout() {
+  if (!boardEl) return;
+  const d = boardData();
+  const ctl = floatable(boardEl, {
+    key: 'pboard', handle: '.pb-head', defW: 1180, defH: 780, minW: 420, minH: 300,
+  });
+  if (d.big) ctl.setKey('pboard', 1180, 780);
+  else ctl.setKey('pboardSmall', 380, 520);
+}
+
 function toggleBoardSize(force) {
   const d = boardData();
   d.big = (force == null) ? !d.big : !!force;
   if (!boardEl) return;
   boardEl.classList.toggle('big', d.big);
   boardEl.classList.toggle('small', !d.big);
+  applyBoardLayout();
   const btn = boardEl.querySelector('#pbSize');
   if (btn) {
     btn.textContent = d.big ? '⤡' : '⤢';
@@ -2436,6 +2451,7 @@ function buildBoard() {
       <button class="btn mini danger" id="pbClearAll">清空条目</button>
     </div>`;
   document.body.appendChild(boardEl);
+  applyBoardLayout();          // 位置/尺寸由 JS 管（能拖能缩能记住），CSS 不再写死
 
   boardEl.querySelector('#pbSize').onclick = () => toggleBoardSize();
   boardEl.querySelector('#pbClose').onclick = () => closeBoard();
@@ -3102,6 +3118,10 @@ function buildRawWindow() {
       placeholder="AI 取回的**完整原文**会放在这里；也可以自己粘一段进来，再点「✂ 分割成条目」"></textarea>
     <div class="sbr-foot" id="sbrFoot"></div>`;
   document.body.appendChild(rawEl);
+  // 能拖能缩能记住（抓标题栏拖、右下角改大小、双击标题栏最大化）
+  floatable(rawEl, {
+    key: 'sbraw', handle: '.sbr-head', defW: 1180, defH: 430, minW: 380, minH: 200,
+  });
   rawEl.querySelector('#sbrClose').onclick = () => closeRawWindow();
   rawEl.querySelector('#sbrSplit').onclick = () => splitFromRawWindow();
   rawEl.querySelector('#sbrCopy').onclick = () => copyRawWindow();
@@ -3300,10 +3320,167 @@ function openStoryboardReview(parts) {
   $('#sbAppend').onclick = () => apply('append');
 }
 
+/* ===================== 浮层通用：能拖、能缩、能记住 =====================
+   用户要求"弹窗都这样写" —— 所以**所有弹窗都走这一套**，不许各写一份：
+     · 抓标题栏拖动；右下角拖动 = 改大小；双击标题栏 = 最大化/还原
+     · 位置和尺寸记在 localStorage，刷新后还在；窗口变小会自动夹回视口内
+   层级不在这里管（各按 CODE_MAP 3.13 那张表）。
+   ⚠️ 事件全部挂在**浮层根元素**上用委托，不挂在标题栏节点上 ——
+   模态框每次 showModal 都会重建 innerHTML，挂子节点上必失效。 */
+
+const FLOAT_KEY = 'mja-float-layout';
+const FLOAT_GRIP = 20;                    // 右下角多大范围算"抓缩放"
+const FLOAT_HINT = '按住拖我挪位置 · 双击最大化/还原 · 右下角拖动改大小';
+
+/** 装好的浮层（同一个 key 只留最新的一个），窗口变小后统一夹回视口内 */
+const FLOAT_LIVE = [];
+let floatResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(floatResizeTimer);
+  floatResizeTimer = setTimeout(() => {
+    for (const c of FLOAT_LIVE) { try { c.apply(); } catch { /* 元素没了就算了 */ } }
+  }, 150);
+});
+
+/** 读全部浮层布局（坏了 / 隐私模式写不了 → 当没有，不影响使用） */
+function floatLayouts() {
+  try { return JSON.parse(localStorage.getItem(FLOAT_KEY) || '{}') || {}; } catch { return {}; }
+}
+function readFloatLayout(key) {
+  const l = floatLayouts()[key];
+  return (l && typeof l === 'object') ? l : null;
+}
+function saveFloatLayout(key, lay) {
+  try {
+    const all = floatLayouts();
+    all[key] = { x: lay.x, y: lay.y, w: lay.w || 0, h: lay.h || 0 };
+    localStorage.setItem(FLOAT_KEY, JSON.stringify(all));
+  } catch { /* 忽略 */ }
+}
+const clampNum = (v, lo, hi) => Math.min(Math.max(Number(v) || 0, lo), Math.max(lo, hi));
+
+/**
+ * 把一份布局夹进视口 + 最小/最大尺寸（**纯计算，方便单测**）。
+ * `h = 0` 表示"高度自适应"（模态框内容长短不一，别硬塞一个高度）。
+ */
+function clampFloatLayout(lay, opt, vw, vh) {
+  const minW = opt.minW || 300, minH = opt.minH || 160;
+  const w = clampNum(lay.w || opt.defW || 520, minW, Math.min(opt.maxW || vw, vw));
+  const h = lay.h ? clampNum(lay.h, minH, Math.min(opt.maxH || vh, vh)) : 0;
+  // 至少留 80px 在屏幕里 —— 拖出去就再也点不到了
+  const x = clampNum(lay.x == null ? (vw - w) / 2 : lay.x, 80 - w, vw - 80);
+  const y = clampNum(lay.y == null ? Math.max(10, (vh - (h || 420)) / 2) : lay.y, 0, vh - 40);
+  return { x, y, w, h };
+}
+
+/**
+ * 让一个浮层能拖、能缩、能记住。返回控制器：`{ apply, setKey, get, reset }`。
+ * opt = { key, handle(选择器，默认整块), defW, defH, minW, minH, maxW, maxH }
+ */
+function floatable(el, opt) {
+  if (el.__float) return el.__float;      // 幂等：一个元素只装一次（showModal 会反复调）
+  const ctl = {
+    opt, key: opt.key,
+    lay: readFloatLayout(opt.key) || { x: null, y: null, w: opt.defW || 0, h: opt.defH || 0 },
+  };
+
+  function apply() {
+    ctl.lay = clampFloatLayout(ctl.lay, opt, window.innerWidth, window.innerHeight);
+    const L = ctl.lay;
+    el.style.position = 'fixed';
+    el.style.left = L.x + 'px';
+    el.style.top = L.y + 'px';
+    if (L.w) el.style.width = L.w + 'px'; else el.style.width = '';     // 0 = 交给 CSS
+    // 高度：0 = 自适应（模态框内容长短不一）；用户拉过就固定，并且要把 CSS 的 max-height 让开，
+    // 否则"拉高了却没变高"（用户会以为缩放坏了）
+    if (L.h) { el.style.height = L.h + 'px'; el.style.maxHeight = 'none'; }
+    else { el.style.height = ''; el.style.maxHeight = ''; }
+    el.dataset.floatKey = ctl.key;
+    // 悬停标题栏就能看到"能拖能缩"（模态框每次重建 h3，所以放 apply 里重设）
+    const h = opt.handle ? el.querySelector(opt.handle) : null;
+    if (h && !h.title) h.title = FLOAT_HINT;
+  }
+  function commit() { apply(); saveFloatLayout(ctl.key, ctl.lay); }
+  /** 换一套布局（工作台"大/小窗"就是两个 key） */
+  function setKey(k, defW, defH) {
+    ctl.max = null;                     // 换模式就别留着"最大化"状态
+    ctl.key = k;
+    ctl.lay = readFloatLayout(k) || { x: null, y: null, w: defW || 0, h: defH || 0 };
+    apply();
+  }
+  function reset() { ctl.lay = { x: null, y: null, w: opt.defW || 0, h: opt.defH || 0 }; commit(); }
+
+  ctl.apply = apply; ctl.setKey = setKey; ctl.reset = reset; ctl.get = () => ctl.lay;
+  el.__float = ctl;
+  {   // 注册进 resize 名单（同一个 key 只留最新的一个，避免反复创建的元素越堆越多）
+    const i = FLOAT_LIVE.findIndex((c) => c.key === ctl.key);
+    if (i >= 0) FLOAT_LIVE.splice(i, 1);
+    FLOAT_LIVE.push(ctl);
+  }
+
+  /** 拖 / 缩：全在根元素上委托，innerHTML 重建也不怕 */
+  el.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    const r = el.getBoundingClientRect();
+    const onGrip = ev.clientX > r.right - FLOAT_GRIP && ev.clientY > r.bottom - FLOAT_GRIP;
+    const handle = (opt.handle && ev.target.closest) ? ev.target.closest(opt.handle) : null;
+    if (!onGrip && !handle) return;
+    // 别抢按钮 / 输入框（右下角的按钮经常正好在抓手范围内）
+    if (ev.target.closest && ev.target.closest('button, input, select, textarea, a, label')) return;
+    const sx = ev.clientX, sy = ev.clientY;
+    const o = { x: ctl.lay.x, y: ctl.lay.y, w: r.width, h: r.height };
+    let moved = false;
+    try { el.setPointerCapture(ev.pointerId); } catch { /* 忽略 */ }
+    const move = (e) => {
+      moved = true;
+      if (onGrip) { ctl.lay.w = o.w + (e.clientX - sx); ctl.lay.h = o.h + (e.clientY - sy); }
+      else {
+        ctl.lay.w = o.w; ctl.lay.h = o.h;      // 拖动时把当前尺寸固定下来
+        ctl.lay.x = o.x + (e.clientX - sx);
+        ctl.lay.y = o.y + (e.clientY - sy);
+      }
+      apply();
+    };
+    const up = () => {
+      el.removeEventListener('pointermove', move);
+      el.removeEventListener('pointerup', up);
+      el.removeEventListener('pointercancel', up);
+      if (moved) commit();
+    };
+    el.addEventListener('pointermove', move);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    ev.preventDefault();
+  });
+
+  /** 双击标题栏 = 最大化 / 还原。
+   *  ⚠️ 还原用的那份布局挂在**控制器**上（挂 lay 上会被"换成最大化对象"时丢掉 —— 真实踩过）；
+   *  最大化**不落盘**（只改视觉），否则下次打开会卡在最大化、还原不回去。 */
+  el.addEventListener('dblclick', (ev) => {
+    const handle = (opt.handle && ev.target.closest) ? ev.target.closest(opt.handle) : null;
+    if (!handle) return;
+    if (ev.target.closest && ev.target.closest('button, input, select, textarea, a, label')) return;
+    if (ctl.max) {
+      ctl.lay = ctl.max;
+      ctl.max = null;
+      commit();                                   // 还原 → 落盘（这才是用户要的布局）
+    } else {
+      ctl.max = { x: ctl.lay.x, y: ctl.lay.y, w: ctl.lay.w, h: ctl.lay.h };
+      ctl.lay = { x: 8, y: 8, w: window.innerWidth - 16, h: Math.max(240, window.innerHeight - 16) };
+      apply();                                    // 最大化 → 不落盘
+    }
+  });
+
+  apply();
+  return ctl;
+}
+
 /* ===================== 模态框 ===================== */
 
 function showModal(html) {
   $('#modalBox').innerHTML = html;
+  // 所有弹窗统一能拖能缩能记住（抓标题 h3 拖、右下角改大小、双击标题最大化）
+  floatable($('#modalBox'), { key: 'modal', handle: 'h3', defW: 560, minW: 320, minH: 160 });
   $('#modalMask').classList.remove('hidden');
   $$('#modalBox [data-close]').forEach((b) => { b.onclick = closeModal; });
 }
