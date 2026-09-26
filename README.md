@@ -440,6 +440,23 @@ node scrub.js --fix    # 执行清理
 > ⚠️ 它只改**当前文件**。**git 历史里的旧版本改不掉** —— 别人翻旧提交仍能看到当时的内容。
 > 想把历史也洗干净，得重写历史再 `git push --force`，不可逆，先想清楚。
 
+### 推送前先看清楚"这次到底改了什么"
+
+`commit` 只是存在本地，`push` 才会上墙 —— 所以推之前值得先看一眼要上传的内容。
+最容易被忽略的是**"已经提交、还没推"的那部分**：这种状态下 `git diff` 是**空的**，
+看不到任何东西，得跟远程比：
+
+```powershell
+git --no-pager log --oneline origin/main..HEAD   # 这次要推的提交
+git --no-pager diff --stat origin/main..HEAD     # 这些提交改了哪些文件、各多少行
+git --no-pager diff origin/main..HEAD            # 逐行细节（+ 新增 / - 删除）
+git status --short                               # 工作区里还没提交的改动
+git --no-pager diff                              # 还没提交的逐行细节
+```
+
+> `--no-pager` 别省 —— 不加的话输出超过一屏会进分页器，看着像"卡死了"（按 `q` 退出）。
+> 修改超过一屏时，往上滚就能看全。
+
 ---
 
 ## 七、还没做的（下一阶段）
