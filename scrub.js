@@ -1,16 +1,16 @@
 /**
- * 去痕迹 / push 前体检。
+ * 推送前检查 / 体检。
  *
  *   node scrub.js            # 只检查并报告（默认，不动任何文件）
  *   node scrub.js --fix      # 执行清理
  *
- * 清掉的是**要推到公开仓库的文本里**属于"个人痕迹"的东西：
- *   · 把需求方的**原话引用**（"你也不能必须 3~5 给小分镜呀"这类）和"用户实测/用户要求/用户定的"
- *     改成中性描述 —— 这些是私下提的要求，不该出现在公开文档里
- *   · 示例里的**作品名**换成占位符
- * **不动**正常说法："用户目录""等用户决定""用户按 Ctrl+C"这类泛指，以及 README 里面向使用者的"你"。
+ * 清理的是**要公开的文本里**不该出现的个人化措辞：
+ *   · 需求方的**转述式引用**（某某说"…"这类）和"某某实测/某某要求"的口吻
+ *   · 示例里的**作品名**（换成占位符）
+ *   · 谈论"仓库自身整理"的话题（那本身就是线索）
+ * **不动**正常说法（"用户目录""等用户决定"这类泛指），以及面向使用者的"你"。
  *
- * ⚠️ 只改**当前文件**；git 历史里的旧版本改不掉（要彻底去得重写历史，见 README/CODE_MAP 的说明）。
+ * ⚠️ 只改**当前文件**；git 历史里的旧版本改不掉（要连历史一起改得重写历史 + force push）。
  */
 const fs = require('fs');
 const path = require('path');
@@ -102,6 +102,9 @@ const MUST_BE_ZERO = [
   ['本机用户名', /C:\\Users\\[^\\\s]+/],
   // ⚠️ 检测规则里**不许写具体值**（这个文件是公开的）—— 只描述"长什么样"
   ['邮箱样式（应统一为 xxx@localhost）', /[\w.+-]+@(?!localhost)[\w-]+\.(?:com|cn|net|org|io|me)\b/i],
+  // 公开文件里别谈论"仓库自身的整理/清理" —— 那等于告诉读者"这儿有过要清理的东西"
+  // （scrub.js 自己不在 FILES 里，所以规则本身含这些词不会误报）
+  ['仓库自身整理话题', /个人痕迹|去痕迹|清理痕迹|隐私数据|个人信息/],
 ];
 
 const FIX = process.argv.includes('--fix');
@@ -126,7 +129,7 @@ for (const f of FILES) {
 }
 
 console.log('\n════════ 清理结果 ════════');
-if (!totalHits) console.log('没有需要清理的痕迹。');
+if (!totalHits) console.log('没有需要清理的内容。');
 else if (FIX) {
   console.log(`已清理 ${totalHits} 处：`);
   for (const { f, hits } of perFile) console.log(`  ${f}  ${hits.join('  ')}`);
@@ -163,7 +166,7 @@ try {
     for (const [name, re] of MUST_BE_ZERO) {
       if (re.test(line)) { bad.push(`${line.split('|')[0]}  「${name}」  ${line.split('|')[1].slice(0, 46)}`); break; }
     }
-    if (/痕迹|隐私|个人信息/.test(line)) bad.push(`${line.split('|')[0]}  「提到"痕迹/隐私"字样」  ${line.split('|')[1].slice(0, 46)}`);
+    if (/痕迹|隐私|个人信息/.test(line)) bad.push(`${line.split('|')[0]}  「涉及仓库自身整理话题」  ${line.split('|')[1].slice(0, 46)}`);
   }
   if (bad.length) {
     console.log('  ⚠️ 最近 30 条提交信息里有可疑内容（这些会显示在 GitHub 上）：');
