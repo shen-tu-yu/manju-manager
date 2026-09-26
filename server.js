@@ -1295,7 +1295,7 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/board' && req.method === 'GET') {
       const d = DB.getSettings().promptBoard;
-      const def = { script: '', seconds: 10, skills: [], items: [], site: 'doubao' };
+      const def = { script: '', seconds: 10, skills: [], items: [], site: 'doubao', askTemplate: '' };
       if (!d || typeof d !== 'object') return sendJSON(res, 200, def);
       return sendJSON(res, 200, Object.assign(def, d, {
         items: (Array.isArray(d.items) ? d.items : []).map((it) => Object.assign({}, it, { images: normBoardImages(it) })),
@@ -1309,6 +1309,7 @@ const server = http.createServer(async (req, res) => {
         script: String(b.script == null ? '' : b.script),
         seconds: Number(b.seconds) || 10,
         site: String(b.site || 'doubao'),
+        askTemplate: String(b.askTemplate == null ? '' : b.askTemplate).slice(0, 20000),
         skills: Array.isArray(b.skills) ? b.skills.map((x) => ({ dirId: String(x.dirId || ''), rel: String(x.rel || '') })) : [],
         items: Array.isArray(b.items) ? b.items.map((it) => ({
           id: String(it.id || ''),

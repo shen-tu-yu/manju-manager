@@ -333,7 +333,14 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
 
 - 命令：`ask`（把剧情文本 + skill 附件投进去，**投完自动发送**）/ `read`（等生成完再抓回复）；
   都走同一套队列，`site=deepseek` 与其他站点隔离
-- **指令由前端组装**（`buildAskText`）：剧情 + 「每镜 N 秒」+ 「每段以 `###` 开头，只输出分镜正文」
+- **指令由前端组装**（`buildAskText`）：走**可编辑预设** `DEFAULT_ASK_TEMPLATE`
+  （`board.askTemplate` 存用户改过的版本，空 = 用默认），占位符 `{{script}}` / `{{seconds}}` / `{{split}}`；
+  面板上「⚙ 预设」→ `openAskTemplateEditor()` 编辑 + 恢复默认
+- **分镜的口径是"大分镜"**（用户明确纠正过一次）：`{{seconds}}`（10s/15s）是**豆包这类视频模型
+  一次能生成的时长选项**，不是小镜头长度。要求 AI：先按剧情排戏 → 按「总时长 ÷ 单次时长」
+  酌情分成若干**大分镜**（60 秒 → 4 个 15 秒）→ **每个大分镜内部**再写多个小分镜/节拍。
+  **脚本按 `{{split}}` 截出来的就是这几个大分镜**，每个正好对应一次豆包生成。
+  ⚠️ **总时长不在工作台配** —— 剧情或 skill 里写了就按它，没写让 AI 自己判断（用户明确说不需要预设）
 - 编排在 `onDeliverEvent` 里：`ask done` → 2.5 秒后入队 `read` → `read done` 带 `result` →
   `splitStoryboard()` 按 `###` 切 → `openStoryboardReview()` 弹预览（勾选 + 可改 + 替换/追加）
 - 脚本侧取回：`lastReplyText()` 抓 `SITE.reply` 里**最后一个正式回答**

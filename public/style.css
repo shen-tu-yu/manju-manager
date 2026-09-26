@@ -780,6 +780,13 @@ body.dragging { cursor: grabbing; }
 }
 .pb-site:hover { color: var(--text); border-color: #3a4352; }
 
+/* 预设提示词编辑框 */
+.ask-tpl {
+  width: 100%; height: 46vh; min-height: 220px; resize: vertical; margin-top: 4px;
+  font: 12.5px/1.7 Consolas, "Microsoft YaHei UI", monospace;
+  white-space: pre-wrap; word-break: break-word;
+}
+
 /* 工作台左侧：生成分镜入口 */
 .pb-gen {
   display: flex; align-items: center; gap: 8px; padding: 2px 0 8px;

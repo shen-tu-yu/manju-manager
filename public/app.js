@@ -2276,7 +2276,12 @@ const newBoardItem = () => ({
 const boardImageCount = () => boardData().items.reduce((n, x) => n + ((x.images || []).length), 0);
 
 function boardData() {
-  if (!S.board) S.board = { open: false, big: true, script: '', seconds: 10, skills: [], items: [], site: 'doubao' };
+  if (!S.board) {
+    S.board = {
+      open: false, big: true, script: '', seconds: 10, skills: [], items: [], site: 'doubao',
+      askTemplate: '',        // 空 = 用 DEFAULT_ASK_TEMPLATE
+    };
+  }
   return S.board;
 }
 
@@ -2285,6 +2290,7 @@ function saveBoard(now) {
   const d = boardData();
   const payload = {
     script: d.script, seconds: d.seconds, skills: d.skills, site: d.site || 'doubao',
+    askTemplate: d.askTemplate || '',
     items: d.items.map(({ id, prompt, images, state, note }) => ({ id, prompt, images, state, note })),
   };
   const put = () => apiPost('/api/board', payload).catch((e) => toast('工作台保存失败：' + e.message, 'err'));
@@ -2303,6 +2309,7 @@ async function openBoard() {
         d.script = saved.script || '';
         d.seconds = Number(saved.seconds) || 10;
         d.site = saved.site || d.site || 'doubao';
+        d.askTemplate = typeof saved.askTemplate === 'string' ? saved.askTemplate : '';
         d.skills = Array.isArray(saved.skills) ? saved.skills : [];
         d.items = (Array.isArray(saved.items) ? saved.items : []).map((it) => ({
           id: it.id || newBoardItem().id,
@@ -2361,6 +2368,7 @@ function buildBoard() {
       <div class="pb-left">
         <div class="pb-gen">
           <button class="btn mini" id="pbGen" title="把剧情 + 勾选的 skill 投给 DeepSeek，让它写分镜">🧠 生成分镜</button>
+          <button class="btn mini" id="pbGenTpl" title="改「生成分镜」投出去的那段指令">⚙ 预设</button>
           <button class="btn mini" id="pbGenView" style="display:none" title="看看刚生成的分镜（可改完重填）">查看</button>
           <button class="btn mini" id="pbGenUndo" style="display:none" title="撤销这次生成，回到之前的条目">撤销</button>
           <div class="pb-sub" id="pbGenState"></div>
@@ -2420,6 +2428,7 @@ function buildBoard() {
     toast('投放目标改为：' + siteName(ev.target.value), 'ok');
   };
   boardEl.querySelector('#pbGen').onclick = () => generateStoryboard();
+  boardEl.querySelector('#pbGenTpl').onclick = () => openAskTemplateEditor();
   boardEl.querySelector('#pbGenView').onclick = () => { if (boardGenLast) openStoryboardReview(boardGenLast); };
   boardEl.querySelector('#pbGenUndo').onclick = () => undoStoryboard();
 
@@ -2727,23 +2736,70 @@ function onDeliverEvent(d) {
 
 const BOARD_SPLIT = '###';      // 固定分隔符（用户定的：让 AI 每段以 ### 开头）
 
-/** 组装给文本 AI 的指令：剧情 + 秒数要求 + 输出格式（含分隔符） */
+/**
+ * 生成分镜的**默认预设指令**。用户可以在工作台点「⚙ 预设」改掉，改完记住。
+ * 占位符：{{script}} 剧情、{{seconds}} 单次生成时长、{{split}} 分隔符。
+ *
+ * ⚠️ 注意这里的分层：**大分镜** = 一次豆包生成（正好 {{seconds}} 秒），
+ * **大分镜内部**还有若干小分镜/动作节拍。脚本按 {{split}} 截出来的就是"大分镜"。
+ */
+const DEFAULT_ASK_TEMPLATE = [
+  '【任务】根据下面的剧情/要求，写出可直接用于 AI 视频生成的分镜提示词。',
+  '',
+  '【剧情 / 要求】',
+  '{{script}}',
+  '',
+  '【单个片段的时长】{{seconds}} 秒',
+  '（这是豆包这类视频模型「一次能生成」的时长选项，不是整条片子的长度。',
+  ' 整条片子多长**不在这里规定**：剧情或参考资料里写了就按它，没写就你自己按内容判断）',
+  '',
+  '【怎么分】',
+  '1. 先按剧情把整场戏排出来：人物、动作、镜头运动、环境光线都写清楚；',
+  '2. 再按「总时长 ÷ {{seconds}} 秒」酌情分成若干个大分镜 ——',
+  '   比如 60 秒的戏就是 4 个 15 秒的大分镜，每个大分镜正好对应一次生成；',
+  '   分几个由你根据剧情决定，不要硬拆、也不要硬塞；',
+  '3. 每个大分镜**内部**要写清这段时间里的多个小分镜 / 动作节拍，别只写一个动作。',
+  '',
+  '【输出格式】',
+  '每个大分镜以 {{split}} 单独一行开头，后面跟这一个大分镜的内容；',
+  '只输出分镜内容本身，不要解释、不要总结、不要开场白和结束语。',
+].join('\n');
+
+/** 把预设指令渲染成真正要投出去的那段文字 */
 function buildAskText(d) {
-  const secs = d.seconds || 10;
-  return [
-    '【任务】根据下面的剧情/要求，写出用于 AI 视频生成的分镜提示词。',
-    '',
-    '【剧情 / 要求】',
-    String(d.script || '').trim(),
-    '',
-    `【每个镜头的时长】${secs} 秒`,
-    '',
-    '【输出要求】',
-    `1. 每个镜头单独一段，段首必须是 ${BOARD_SPLIT}（单独一行，后面跟这一镜的内容）`,
-    '2. 只输出分镜内容本身：不要解释、不要总结、不要开场白和结束语',
-    '3. 每段是一条可直接用于文生视频的提示词：主体 + 动作 + 镜头运动 + 环境光线',
-    `4. 按 ${secs} 秒一镜来写；能拆就拆，别把好几件事挤进一段`,
-  ].join('\n');
+  const tpl = (d.askTemplate && d.askTemplate.trim()) || DEFAULT_ASK_TEMPLATE;
+  return tpl
+    .replace(/\{\{script\}\}/g, String(d.script || '').trim())
+    .replace(/\{\{seconds\}\}/g, String(d.seconds || 10))
+    .replace(/\{\{split\}\}/g, BOARD_SPLIT);
+}
+
+/** 点开就能改的预设提示词 */
+function openAskTemplateEditor() {
+  const cur = (boardData().askTemplate || '').trim() || DEFAULT_ASK_TEMPLATE;
+  showModal(`
+    <h3>⚙ 生成分镜的预设提示词</h3>
+    <div class="modal-sub">
+      这就是点「🧠 生成分镜」时投给 DeepSeek 的那段指令，随你改。可用占位符：
+      <code>{{script}}</code> 剧情 · <code>{{seconds}}</code> 秒数 · <code>{{split}}</code> 分隔符
+    </div>
+    <textarea id="askTpl" class="ask-tpl" spellcheck="false"></textarea>
+    <div class="modal-actions">
+      <button class="btn" id="askReset">恢复默认</button>
+      <button class="btn" data-close>取消</button>
+      <button class="btn primary" id="askSave">保存</button>
+    </div>
+  `);
+  const ta = $('#askTpl');
+  ta.value = cur;
+  $('#askReset').onclick = () => { ta.value = DEFAULT_ASK_TEMPLATE; };
+  $('#askSave').onclick = () => {
+    const v = ta.value.trim();
+    boardData().askTemplate = (v === DEFAULT_ASK_TEMPLATE.trim()) ? '' : v;   // 与默认一样就存空
+    saveBoard(true);
+    closeModal();
+    toast('预设已保存', 'ok');
+  };
 }
 
 /** 把 AI 的回复按 ### 切成一条条 */
