@@ -19,49 +19,14 @@ const APP_DIR = __dirname;
 
 // 数据层：Node 内置 node:sqlite，零依赖。数据库文件在这个目录里，不占 C 盘。
 const DB = require('./db');
-const browsers = require('./browsers');   // 自动发现本机浏览器（不写死安装路径）
+const browsers = require('./browsers');
+const { MIME, extOf, kindOf } = require('./lib/filetypes');   // 扩展名 / MIME / 分类判定（零依赖）   // 自动发现本机浏览器（不写死安装路径）
 DB.migrate();   // 首次启动把旧的 config.json / vgroups.json 导进库（库非空时什么都不做）
 const PUBLIC_DIR = path.join(APP_DIR, 'public');
 const CONFIG_PATH = path.join(APP_DIR, 'config.json');
 const RECYCLE_NAME = '.recycle';          // 每个根目录下的回收站
 
-// ---------------------------------------------------------------- 文件类型
-
-const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.jfif', '.gif', '.webp', '.bmp', '.avif', '.svg', '.ico']);
-const VIDEO_EXT = new Set(['.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v', '.flv', '.wmv', '.mpg', '.mpeg', '.ts']);
-const AUDIO_EXT = new Set(['.mp3', '.wav', '.m4a', '.flac', '.aac', '.ogg', '.wma']);
-const TEXT_EXT = new Set(['.txt', '.md', '.json', '.js', '.mjs', '.cjs', '.ts', '.css', '.html', '.htm', '.xml',
-  '.yml', '.yaml', '.log', '.csv', '.ini', '.conf', '.bat', '.cmd', '.ps1', '.sh', '.py', '.java', '.c',
-  '.cpp', '.h', '.hpp', '.go', '.rs', '.sql', '.vue', '.jsx', '.tsx', '.srt', '.ass', '.toml']);
-
-const MIME = {
-  '.html': 'text/html; charset=utf-8', '.htm': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.jfif': 'image/jpeg',
-  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif',
-  '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.mkv': 'video/x-matroska',
-  '.m4v': 'video/mp4', '.avi': 'video/x-msvideo',
-  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.flac': 'audio/flac',
-  '.ogg': 'audio/ogg', '.aac': 'audio/aac',
-  '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
-  '.pdf': 'application/pdf', '.zip': 'application/zip',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-};
-
-function extOf(name) { return path.extname(name).toLowerCase(); }
-
-function kindOf(name) {
-  const ext = extOf(name);
-  if (IMAGE_EXT.has(ext)) return 'image';
-  if (VIDEO_EXT.has(ext)) return 'video';
-  if (AUDIO_EXT.has(ext)) return 'audio';
-  if (TEXT_EXT.has(ext)) return 'text';
-  return 'other';
-}
+// 文件类型判定（扩展名集合 / MIME / extOf / kindOf）已拆到 lib/filetypes.js
 
 // ---------------------------------------------------------------- 配置
 
