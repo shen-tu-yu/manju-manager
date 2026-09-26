@@ -1009,34 +1009,14 @@ function normBoardImages(it) {
   return out;
 }
 
-// ---------------------------------------------------------------- 投放通道（命令队列）
-//
-// 网页和 AI 站点之间没有长连接可用，所以走"命令队列 + 脚本轮询"：
-//   网页入队 → 助手脚本每 1.2 秒来取一条 → 执行（投图/投提示词/点发送）→ 回执 → SSE 推回网页。
-// 任务只在内存里（投放是即时动作），进程重启就没了，不做持久化。
-//
-// 两种命令：
-//   deliver —— 把这条的多张图**一张一张**（间隔 0.5s）投进输入框，再投提示词
-//   send    —— 点目标站的发送按钮（**找不到按钮就失败，绝不猜坐标瞎点**）
+// ---------------------------------------------------------------- 投放通道（已拆到 lib/deliver.js）
 
-const deliverTasks = new Map();
-const DELIVER_KEEP = 100;                      // 内存里最多留多少条历史
-const DELIVER_TIMEOUT_MS = 90 * 1000;          // 脚本领取后超时未回执 → 退回待执行
-
-function queueDeliver(kind, payload) {
-  const id = 'dl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-  const t = Object.assign({ id, kind, state: 'pending', createdAt: Date.now(), message: '' }, payload);
-  deliverTasks.set(id, t);
-  if (deliverTasks.size > DELIVER_KEEP) {
-    const oldest = Array.from(deliverTasks.values())
-      .sort((a, b) => a.createdAt - b.createdAt)
-      .slice(0, deliverTasks.size - DELIVER_KEEP);
-    for (const o of oldest) if (o.state === 'done' || o.state === 'failed') deliverTasks.delete(o.id);
-  }
-  LOG(`[投放] 入队 ${id}（${kind}${t.itemId ? ' · ' + t.itemId : ''}）`);
-  sseSend('deliver', { id, kind, itemId: t.itemId || '', state: 'pending', message: '' });
-  return t;
-}
+const createDeliver = require('./lib/deliver');
+const deliver = createDeliver({
+  LOG, sseSend, sendJSON,
+  readJson: readJSONBody,       // 读请求体（就是原来那个 body()）
+  imagesMax: BOARD_IMAGES_MAX,  // 每条提示词最多配几张图
+});
 
 // ---------------------------------------------------------------- 路由
 
@@ -1314,124 +1294,22 @@ const server = http.createServer(async (req, res) => {
     // ============================ 投放通道（新文件到达的下一步） ============================
 
     // 助手脚本轮询：取一条待执行的任务（取到即标记 running）
-    if (p === '/api/deliver/next' && req.method === 'GET') {
-      const site = String(q.get('site') || '');
-      const page = String(q.get('page') || '');      // 脚本上报自己所在的页面路径，便于排查
-      const now = Date.now();
-      for (const t of deliverTasks.values()) {          // 超时回收：脚本崩了/页面关了，任务不能卡死
-        if (t.state === 'running' && now - (t.startedAt || 0) > DELIVER_TIMEOUT_MS) {
-          t.state = 'pending';
-          t.message = '上次执行超时，重来';
-          sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: 'pending', message: t.message });
-        }
-      }
-      const t = Array.from(deliverTasks.values())
-        .filter((x) => x.state === 'pending' && (!site || !x.site || x.site === site))
-        .sort((a, b) => a.createdAt - b.createdAt)[0];
-      if (!t) return sendJSON(res, 200, { task: null });
-      t.state = 'running';
-      t.startedAt = now;
-      LOG(`[投放] 脚本领取 ${t.id}（${t.kind}${page ? ' · 来自 ' + page : ''}）`);
-      sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: 'running', message: '' });
-      return sendJSON(res, 200, {
-        task: {
-          id: t.id,
-          kind: t.kind,
-          images: t.images || [],      // deliver 用
-          prompt: t.prompt || '',      // deliver 用
-          text: t.text || '',          // ask 用（剧情 + 输出要求）
-          files: t.files || [],        // ask 用（skill 附件）
-          expect: t.expect || null,    // read 用（什么才算"正式回答"），见 /api/deliver/queue
-        },
-      });
-    }
+    if (p === '/api/deliver/next' && req.method === 'GET') return await deliver.next(req, res, { q });
 
     // 助手脚本回执
-    if (p === '/api/deliver/done' && req.method === 'POST') {
-      const b = await body();
-      const t = deliverTasks.get(String(b.id || ''));
-      if (!t) return sendJSON(res, 200, { ok: true, gone: true });
-      t.state = b.ok ? 'done' : 'failed';
-      t.message = String(b.message || '');
-      t.finishedAt = Date.now();
-      // 取回的长文本（read 命令用）：存下来并推给网页；日志只记长度，别把 debug.log 撑爆
-      if (typeof b.result === 'string' && b.result.trim()) t.result = b.result.slice(0, 200000);
-      LOG(`[投放] ${t.id} ${t.state}：${t.message}${t.result ? `（带回 ${t.result.length} 字）` : ''}`);
-      if (Array.isArray(b.probe) && b.probe.length) {          // 脚本附带的页面诊断 → 进 debug.log
-        t.probe = b.probe.slice(0, 20).map(String);
-        LOG(`[投放] ${t.id} 页面诊断：\n      ` + t.probe.join('\n      '));
-      }
-      sseSend('deliver', {
-        id: t.id, kind: t.kind, itemId: t.itemId || '',
-        state: t.state, message: t.message, result: t.result || '',
-      });
-      return sendJSON(res, 200, { ok: true });
-    }
+    if (p === '/api/deliver/done' && req.method === 'POST') return await deliver.done(req, res, { body });
 
     // 网页入队：三种命令
     //   deliver —— 投某一条的图 + 提示词（豆包/Pavo 生成视频）
     //   ask     —— 把"剧情 + skill 模板"投给文本 AI（DeepSeek）并自动发送
     //   read    —— 把文本 AI 的回复取回来（脚本等它生成完再抓）
-    if (p === '/api/deliver/queue' && req.method === 'POST') {
-      const b = await body();
-      const kind = String(b.kind || 'deliver');
-      const site = String(b.site || 'doubao');
-
-      if (kind === 'ask') {
-        // skill 是**组合投放**的，上限给足（20 个），别像以前那样静默截断
-        const files = (Array.isArray(b.files) ? b.files : [])
-          .filter((f) => f && f.dirId && f.rel)
-          .slice(0, 20)
-          .map((f) => ({ dirId: String(f.dirId), rel: String(f.rel), name: String(f.name || '') }));
-        const t = queueDeliver('ask', { site, text: String(b.text || ''), files });
-        return sendJSON(res, 200, {
-          ok: true, id: t.id, files: files.length,
-          chars: t.text.length,
-          dropped: Math.max(0, (Array.isArray(b.files) ? b.files.length : 0) - files.length),
-        });
-      }
-
-      if (kind === 'read') {
-        // ⚠️ expect 是**前端下发的"什么才算正式回答"判据**（前端知道预设的格式：分隔符 + 段落标题）。
-        // 脚本拿它挡"只等到思考链"的情况 —— 判据的知识留在前端，脚本只做字符串检查。
-        const b2 = b.expect && typeof b.expect === 'object' ? b.expect : null;
-        const expect = b2 ? {
-          split: String(b2.split || '').slice(0, 40),
-          head: String(b2.head || '').slice(0, 40),
-        } : null;
-        const t = queueDeliver('read', { site, expect: (expect && (expect.split || expect.head)) ? expect : null });
-        return sendJSON(res, 200, { ok: true, id: t.id });
-      }
-
-      const images = (Array.isArray(b.images) ? b.images : [])
-        .filter((x) => x && x.root && x.path)
-        .slice(0, BOARD_IMAGES_MAX)
-        .map((x) => ({ root: String(x.root), path: String(x.path) }));
-      const t = queueDeliver('deliver', {
-        itemId: String(b.itemId || ''),
-        site,
-        images,
-        prompt: String(b.prompt || ''),
-      });
-      return sendJSON(res, 200, { ok: true, id: t.id, images: images.length });
-    }
+    if (p === '/api/deliver/queue' && req.method === 'POST') return await deliver.enqueue(req, res, { body });
 
     // 网页入队：让脚本去点目标站的发送按钮
-    if (p === '/api/deliver/send' && req.method === 'POST') {
-      const b = await body();
-      const t = queueDeliver('send', { itemId: String(b.itemId || ''), site: String(b.site || 'doubao') });
-      return sendJSON(res, 200, { ok: true, id: t.id });
-    }
+    if (p === '/api/deliver/send' && req.method === 'POST') return await deliver.send(req, res, { body });
 
     // 网页查任务状态（刷新页面后恢复显示用）
-    if (p === '/api/deliver/state' && req.method === 'GET') {
-      return sendJSON(res, 200, {
-        tasks: Array.from(deliverTasks.values())
-          .sort((a, b) => a.createdAt - b.createdAt)
-          .map((t) => ({ id: t.id, kind: t.kind, itemId: t.itemId || '', state: t.state, message: t.message || '', at: t.createdAt }))
-          .slice(-50),
-      });
-    }
+    if (p === '/api/deliver/state' && req.method === 'GET') return await deliver.state(req, res);
 
     // 读一份模板（预览用；以后投放给 AI 也用这个接口取内容）
     if (p === '/api/skills/file' && req.method === 'GET') {
