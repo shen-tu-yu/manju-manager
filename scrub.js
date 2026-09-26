@@ -175,8 +175,9 @@ try {
   console.log('  推送前请自己看一眼：git log -n 10 --format=%h%n%s%n%b');
 }
 
-// —— push 前体检（不调用 git，纯读文件，任何环境都能跑）——
+// —— push 前体检（读文件 + 尽量读 git；读不到就跳过）——
 console.log('\n════════ push 前体检 ════════');
+let sideWarn = 0;          // 体检发现的问题：也要算进退出码，让「一键上传」停下来问
 try {
   const cfg = fs.readFileSync(path.join('.git', 'config'), 'utf8');
   const pick = (k) => (cfg.match(new RegExp(`${k} = (.*)`)) || [])[1];
@@ -185,17 +186,46 @@ try {
   if (em && !/@localhost$/.test(em)) {
     console.log('  ⚠️ 这个邮箱会写进**新提交**（想去掉就设仓库级身份）：');
     console.log('     git config user.name "你的名字" && git config user.email "you@localhost"');
+    sideWarn++;
   }
   console.log(`远程仓库：${url || '(没配)'}`);
 } catch { console.log('读不到 .git/config（跳过）'); }
+
 const ignore = fs.existsSync('.gitignore') ? fs.readFileSync('.gitignore', 'utf8') : '';
 for (const f of ['data.db', 'debug.log', 'launcher.json', 'clipboard.log']) {
   const has = fs.existsSync(f);
   const ignored = ignore.split('\n').some((l) => l.trim() === f);
-  if (has && !ignored) console.log(`  ⚠️ ${f} 存在且**没被 .gitignore 忽略** —— git add . 会把它推上去`);
+  if (has && !ignored) {
+    console.log(`  ⚠️ ${f} 存在且**没被 .gitignore 忽略** —— git add . 会把它推上去`);
+    sideWarn++;
+  }
+}
+
+// 待提交的大文件（GitHub 单文件上限 100MB，超了直接拒收）
+try {
+  const { spawnSync } = require('child_process');
+  const r = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
+  if (r.status !== 0 || r.stdout == null) throw new Error('读不到 git 状态');
+  const big = [];
+  for (const line of r.stdout.split('\n')) {
+    const p = line.slice(3).trim().replace(/^"|"$/g, '');
+    if (!p || !fs.existsSync(p)) continue;
+    let st = null;
+    try { st = fs.statSync(p); } catch { continue; }
+    if (!st.isFile()) continue;
+    const mb = st.size / 1048576;
+    if (mb > 5) big.push(`${p}  ${mb.toFixed(1)} MB`);
+  }
+  if (big.length) {
+    console.log('  ⚠️ 待提交的大文件（GitHub 单文件上限 100MB，超了会被拒收）：');
+    for (const b of big) console.log('    ' + b);
+    sideWarn++;
+  } else console.log('  ✅ 没有超过 5MB 的大文件。');
+} catch (e) {
+  console.log(`  （大文件检查跳过：${e.message}）`);
 }
 console.log('（data.db / debug.log / launcher.json 都在 .gitignore 里就安全）');
 
 // 退出码：给 bat / CI 判断用 —— 发现问题 → 1，干净 → 0
 // （「一键上传.bat」就是靠它决定要不要停下来问你）
-process.exit((left || (!FIX && totalHits)) ? 1 : 0);
+process.exit((left || sideWarn || (!FIX && totalHits)) ? 1 : 0);
