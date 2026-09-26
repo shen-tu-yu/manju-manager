@@ -1354,6 +1354,10 @@ const server = http.createServer(async (req, res) => {
       t.message = String(b.message || '');
       t.finishedAt = Date.now();
       LOG(`[投放] ${t.id} ${t.state}：${t.message}`);
+      if (Array.isArray(b.probe) && b.probe.length) {          // 脚本附带的页面诊断 → 进 debug.log
+        t.probe = b.probe.slice(0, 20).map(String);
+        LOG(`[投放] ${t.id} 页面诊断：\n      ` + t.probe.join('\n      '));
+      }
       sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: t.state, message: t.message });
       return sendJSON(res, 200, { ok: true });
     }

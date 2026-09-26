@@ -203,22 +203,35 @@
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))));
   }
 
-  /** 把提示词写进输入框（textarea 和 contenteditable 两种都试） */
+  /** 找输入框：豆包是 textarea.semi-input-textarea（Semi 设计系统），其它站退到通用选择器 */
+  function findInputBox() {
+    return document.querySelector('textarea.semi-input-textarea')
+      || document.querySelector('[contenteditable="true"]')
+      || document.querySelector('textarea');
+  }
+
+  /** 把提示词写进输入框（先试 insertText，再退回原生 setter + input 事件，两种都能让 React 收到） */
   function injectText(text) {
     const s = String(text || '');
     if (!s) return false;
-    const box = document.querySelector('[contenteditable="true"]') || document.querySelector('textarea');
+    const box = findInputBox();
     if (!box) return false;
     try { box.focus(); } catch { /* 有的元素不能 focus */ }
+
     if (box.tagName === 'TEXTAREA' || box.tagName === 'INPUT') {
-      const proto = box.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
-      setter.call(box, s);
+      let doneOk = false;
+      try { doneOk = document.execCommand && document.execCommand('insertText', false, s); } catch { doneOk = false; }
+      if (!doneOk || !box.value) {
+        const proto = box.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+        setter.call(box, s);
+      }
       box.dispatchEvent(new Event('input', { bubbles: true }));
       box.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
     }
-    const ok = document.execCommand && document.execCommand('insertText', false, s);
+    let ok = false;
+    try { ok = document.execCommand && document.execCommand('insertText', false, s); } catch { ok = false; }
     if (!ok) {
       box.textContent = s;
       box.dispatchEvent(new InputEvent('input', { bubbles: true }));
@@ -226,15 +239,28 @@
     return true;
   }
 
-  /** 找发送按钮：按 aria-label / data-testid / 文本 打分；**找不到返回 null**（不瞎点） */
+  /**
+   * 在输入框上按 Enter —— **豆包网页版就是这么发的**
+   * （参考开源的 doubao-playwright-skill：它发消息只做 textarea.press('Enter')，根本不点按钮）。
+   */
+  function pressEnter(el) {
+    const o = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+    try { el.focus(); } catch { /* 忽略 */ }
+    el.dispatchEvent(new KeyboardEvent('keydown', o));
+    el.dispatchEvent(new KeyboardEvent('keypress', o));
+    el.dispatchEvent(new KeyboardEvent('keyup', o));
+  }
+
+  /** 发送按钮：按 aria-label / data-testid / class / 文本 打分；找不到返回 null（不瞎点） */
   function findSendButton() {
-    const list = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="send"]'));
+    const list = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="send"], [class*="send" i]'));
     let best = null, bestScore = 0;
     for (const el of list) {
       const txt = [
         el.getAttribute('aria-label') || '',
         el.getAttribute('data-testid') || '',
         el.getAttribute('title') || '',
+        typeof el.className === 'string' ? el.className : '',
         el.textContent || '',
       ].join(' ');
       let s = 0;
@@ -243,25 +269,69 @@
       if ((el.getAttribute('type') || '').toLowerCase() === 'submit') s += 2;
       if (el.disabled) s -= 6;
       const r = el.getBoundingClientRect();
-      if (!r.width || !r.height) s -= 6;          // 不可见的不算
+      if (!r.width || !r.height) s -= 6;
       if (s > bestScore) { bestScore = s; best = el; }
     }
     return bestScore >= 5 ? best : null;
   }
 
-  async function reportTask(id, ok, message) {
-    try { await postJSON(FM + '/api/deliver/done', { id, ok, message }); }
+  /** 诊断：把页面上像按钮的东西列出来，随回执发给本地服务（写进 debug.log，方便我按实际 DOM 适配） */
+  function describeEl(el) {
+    const r = el.getBoundingClientRect();
+    const cls = typeof el.className === 'string'
+      ? el.className.split(/\s+/).filter(Boolean).slice(0, 3).join('.') : '';
+    const parts = [el.tagName.toLowerCase()];
+    if (cls) parts.push('.' + cls);
+    const al = el.getAttribute('aria-label'); if (al) parts.push('aria="' + al + '"');
+    const dt = el.getAttribute('data-testid'); if (dt) parts.push('testid="' + dt + '"');
+    const tx = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 14); if (tx) parts.push('"' + tx + '"');
+    parts.push('@' + Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height));
+    return parts.join(' ');
+  }
+
+  function buttonProbe() {
+    try {
+      const out = []; 
+      const box = findInputBox();
+      out.push('输入框: ' + (box ? describeEl(box) : '没找到')
+        + ' | 路径 ' + location.pathname + ' | file input ' + findInputs().length + ' 个');
+      for (const el of document.querySelectorAll('button, [role="button"], [data-testid], [class*="send" i]')) {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) continue;
+        out.push(describeEl(el));
+        if (out.length >= 15) break;
+      }
+      return out;
+    } catch (e) { return ['probe 失败: ' + e.message]; }
+  }
+
+  async function reportTask(id, ok, message, probe) {
+    try { await postJSON(FM + '/api/deliver/done', { id, ok, message, probe: probe || null }); }
     catch (e) { log('回执失败', e.message); }
   }
 
   async function runTask(task) {
     log('收到任务', task.id, task.kind);
-    let ok = false, msg = '';
+    let ok = false, msg = '', probe = null;
     try {
       if (task.kind === 'send') {
         const btn = findSendButton();
-        if (!btn) msg = '没找到发送按钮，没敢乱点 —— 请手动点一下';
-        else { btn.click(); ok = true; msg = '已点发送'; }
+        if (btn && !btn.disabled) {
+          btn.click();
+          ok = true;
+          msg = '已点发送按钮';
+        } else {
+          // 豆包网页版是按 Enter 发送的 —— 按钮找不到/不可用就退回按 Enter，比瞎点坐标可靠
+          const box = findInputBox();
+          if (box) {
+            pressEnter(box);
+            ok = true;
+            msg = (btn ? '发送按钮不可用' : '没找到发送按钮') + '，已改用「在输入框按 Enter」发送';
+          } else {
+            msg = '既没找到发送按钮，也没找到输入框';
+            probe = buttonProbe();
+          }
+        }
       } else {
         const imgs = Array.isArray(task.images) ? task.images : [];
         let sent = 0;
@@ -269,8 +339,12 @@
           const blob = await getBlob(`${FM}/api/file?root=${encodeURIComponent(im.root)}&path=${encodeURIComponent(im.path)}`);
           const file = new File([blob], pathName(im.path) || ('image' + (sent + 1) + '.png'),
             { type: blob.type || 'image/png' });
-          const input = findInputs().find((i) => acceptOk(i, file)) || findInputs()[0];
-          if (!input) throw new Error('这个页面没有 input[type=file]，投不进去');
+          const inputs = findInputs();
+          const input = inputs.find((i) => acceptOk(i, file)) || inputs[0];
+          if (!input) {
+            probe = buttonProbe();
+            throw new Error('这个页面没有 input[type=file]，投不进去');
+          }
           if (!injectToInput(input, [file])) throw new Error('注入图片失败');
           sent++;
           await sleep(500);                        // ← 一张一张来，中间隔 0.5 秒，确保顺序不乱
@@ -281,11 +355,12 @@
       }
     } catch (e) {
       msg = e.message || String(e);
+      if (!probe) probe = buttonProbe();
     }
     state.diag = `任务 ${task.kind}：${msg}`;
     renderDiag();
     toast(msg, ok);
-    await reportTask(task.id, ok, msg);
+    await reportTask(task.id, ok, msg, probe);
   }
 
   let deliverTimer = null;

@@ -403,6 +403,13 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
    （`findSendButton()` 打分低于 5 分直接返回 null）
 4. **多图必须一张一张投**（`await sleep(500)`）：目标页面是异步渲染，一口气塞进去顺序会乱 ——
    这正是用户要的"0.5 秒一张，确保人和图不串"
+5. **豆包是按 `Enter` 发送的，别死磕发送按钮**：开源的 doubao-playwright-skill 里
+   `send_message()` 只做 `textarea.press('Enter')`，根本不点按钮。所以 `send` 命令的顺序是：
+   先找按钮并点击 → 找不到 / `disabled` 就 `pressEnter(findInputBox())` → 两者都没有才报失败。
+   输入框优先 `textarea.semi-input-textarea`（豆包用字节的 Semi 设计系统）
+6. **失败必须带回页面诊断**：`buttonProbe()` 把输入框 + 可见按钮（tag / class / aria / testid / 坐标）
+   列出来，随回执上报 → 后端写进 `debug.log`。这样"找不到元素"这类问题能**一次定位**，
+   不用让用户手抄 DOM（踩坑：第三方 DOM 猜不得）
 
 ---
 
