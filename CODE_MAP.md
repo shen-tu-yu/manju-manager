@@ -334,14 +334,21 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
 
 - 命令：`ask`（把剧情文本 + skill 附件投进去，**投完自动发送**）/ `read`（等生成完再抓回复）；
   都走同一套队列，`site=deepseek` 与其他站点隔离
-- **指令由前端组装**（`buildAskText`）：走**预设库** —— `board.askPresets`（`[{id,name,text}]`，
-  **可存多份**：不同题材 / 不同平台各一份）+ `board.askPresetId`（用哪份，空 = 内置默认
-  `DEFAULT_ASK_TEMPLATE`）；取正文的**唯一入口**是 `askPresetText()`。
-  占位符 `{{script}}` / `{{seconds}}` / `{{split}}`；面板上「⚙ 预设」→ `openAskTemplateEditor()`
-  可新建 / 复制一份 / 改名 / 删除 / 「这一份恢复默认内容」。
-  ⚠️ **内置默认不可直接改**（`readOnly`）—— 想改先「⧉ 复制一份」，免得出现"改了却存不进去"的糊涂账
-  ⚠️ **老数据迁移**：以前只有单份 `board.askTemplate`，`migrateBoard()` 会把它搬成库里的一条
-  （命名"我改过的预设"）并清空老字段，**不丢用户改过的东西**；迁移幂等
+- **指令由前端组装**（`buildAskText`）：走**预设库**，而且**分两类**（用户要求）：
+  · 🎬 `kind='storyboard'` **分镜预设** —— 写分镜，取回后**切成条目**（`DEFAULT_ASK_TEMPLATE`）
+  · 📝 `kind='text'` **文本预设** —— 写剧本剧情，取回就是正文，**不分割**（`DEFAULT_TEXT_TEMPLATE`）
+  `board.askPresets` = `[{id, kind, name, text}]`（可存多份）+ `board.askPresetId`（用哪份）；
+  内置两条在 `BUILTIN_PRESETS` 里：`''` = 内置分镜、`BUILTIN_TEXT_ID`(`__text`) = 内置文本。
+  **取正文的唯一入口是 `askPresetText()`；判断"取回要不要切"的唯一入口是 `askPresetKind()`。**
+  ⚠️ **不写 kind / kind 写错的，一律当分镜预设**（老数据安全，行为不变）
+  ⚠️ **内置两条不可直接改**（`readOnly` + 改名/删除按钮禁用）—— 想改先「⧉ 复制一份」，
+  免得"改了却存不进去"；正文为空（含内置）由 `askPresetText()` 回落到**该类**的内置模板
+  ⚠️ **老数据迁移**：以前只有单份 `board.askTemplate`，`migrateBoard()` 搬成库里的一条
+  **分镜预设**（"我改过的预设"）并清空老字段，**不丢用户改过的东西**；迁移幂等
+- **用哪份预设 = 哪种行为**（工作台头部 `#pbPreset` 下拉，按两类 `optgroup` 分组）：
+  选 🎬 → 按钮显示「🧠 生成分镜」，取回自动切条；选 📝 → 按钮显示「📝 生成文本」，
+  read 命令**不下发 `expect` 判据**、`onDeliverEvent` 里 `textMode` 直接 return（**在 `splitStoryboard()` 之前**）。
+  「⚙ 预设」弹窗只用于管理（新建两类 / 复制 / 改名 / 删除 / 恢复该类模板）
 - **分镜的口径是"大分镜"**（用户明确纠正过一次）：`{{seconds}}`（10s/15s）是**豆包这类视频模型
   一次能生成的时长选项**，不是小镜头长度。要求 AI：先按剧情排戏 → 按「总时长 ÷ 单次时长」
   酌情分成若干**大分镜**（60 秒 → 4 个 15 秒）→ **每个大分镜内部**再写多个小分镜/节拍。

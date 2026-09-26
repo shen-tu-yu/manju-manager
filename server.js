@@ -1297,7 +1297,7 @@ const server = http.createServer(async (req, res) => {
       const d = DB.getSettings().promptBoard;
       const def = {
         script: '', seconds: 10, skills: [], items: [], site: 'doubao', askTemplate: '',
-        askPresets: [], askPresetId: '', rawReply: '', rawHistory: [],
+        askPresets: [], askPresetId: '', rawReply: '', rawMode: 'split', rawHistory: [],
       };
       if (!d || typeof d !== 'object') return sendJSON(res, 200, def);
       return sendJSON(res, 200, Object.assign(def, d, {
@@ -1313,9 +1313,10 @@ const server = http.createServer(async (req, res) => {
         seconds: Number(b.seconds) || 10,
         site: String(b.site || 'doubao'),
         askTemplate: String(b.askTemplate == null ? '' : b.askTemplate).slice(0, 20000),
-        // ★ 预设库：可以存多份（不同题材 / 不同平台各一份），用哪份看 askPresetId
+        // ★ 预设库：**分两类** —— kind='storyboard' 写分镜（取回切成条目）/ 'text' 写剧情（取回不分割）
         askPresets: (Array.isArray(b.askPresets) ? b.askPresets : []).slice(0, 30).map((x) => ({
           id: String(x && x.id || ''),
+          kind: (x && x.kind === 'text') ? 'text' : 'storyboard',
           name: String(x && x.name || '').slice(0, 60),
           text: String(x && x.text == null ? '' : x.text).slice(0, 20000),
         })).filter((x) => x.id),
@@ -1323,10 +1324,12 @@ const server = http.createServer(async (req, res) => {
         // ★ 分镜原文：完整文本（分割只读它）。上限跟取回文本一致，别把 settings 撑爆
         rawReply: String(b.rawReply == null ? '' : b.rawReply).slice(0, 200000),
         rawWhy: String(b.rawWhy == null ? '' : b.rawWhy).slice(0, 300),
+        rawMode: (b.rawMode === 'text') ? 'text' : 'split',
         // ★ 历史原文：**新的一次生成不覆盖旧的**，旧的都留在这里
         rawHistory: (Array.isArray(b.rawHistory) ? b.rawHistory : []).slice(0, 8).map((x) => ({
           at: Number(x && x.at) || 0,
           why: String(x && x.why || '').slice(0, 300),
+          mode: (x && x.mode === 'text') ? 'text' : 'split',
           text: String(x && x.text == null ? '' : x.text).slice(0, 200000),
         })),
         skills: Array.isArray(b.skills) ? b.skills.map((x) => ({ dirId: String(x.dirId || ''), rel: String(x.rel || '') })) : [],

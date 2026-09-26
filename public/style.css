@@ -799,6 +799,12 @@ body.dragging { cursor: grabbing; }
   border-radius: 6px; padding: 3px 6px; font-size: 12px; cursor: pointer;
 }
 .pb-site:hover { color: var(--text); border-color: #3a4352; }
+/* 工作台上的预设下拉（分镜 / 文本两类分组） */
+.pb-preset {
+  background: #21252e; color: var(--text-dim); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 6px; font-size: 12px; cursor: pointer; max-width: 190px;
+}
+.pb-preset:hover { color: var(--text); border-color: #3a4352; }
 
 /* ===================== 📄 分镜原文窗口 =====================
    ⚠️ 层级 1090 —— **比提示词工作台（1080）高**：它要盖在工作台上面，不能被别的面板压住。
@@ -831,6 +837,7 @@ body.dragging { cursor: grabbing; }
 .sbr-node span { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sbr-node i { margin-left: auto; color: var(--text-faint); font-style: normal; flex: none; }
 .sbr-node.warn { color: #e0b050; }
+.sbr-node.textmode { color: #7fb2ff; }   /* 📝 文本模式：不是警告，是说明 */
 #sbrText {
   flex: 1 1 auto; min-height: 110px; margin: 0; border: 0; border-radius: 0;
   background: #0f1115; color: #d6e0ee; padding: 10px 12px;

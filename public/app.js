@@ -2282,10 +2282,11 @@ function boardData() {
     S.board = {
       open: false, big: true, script: '', seconds: 10, skills: [], items: [], site: 'doubao',
       askTemplate: '',        // 老字段：单份自定义预设（见 migrateBoard，会被搬进 askPresets）
-      askPresets: [],         // ★ 预设库：可存多份 [{id, name, text}]（内置默认不在库里，见 DEFAULT_ASK_TEMPLATE）
-      askPresetId: '',        // 当前用哪一份（'' = 内置默认）
+      askPresets: [],         // ★ 预设库：[{id, name, kind, text}]，kind = 'storyboard' | 'text'
+      askPresetId: '',        // 当前用哪一份（'' = 内置分镜预设，'__text' = 内置文本预设）
       rawReply: '',           // ★ 分镜原文（完整文本）：**分割只读它**，不覆盖
       rawWhy: '',             // 这份原文是怎么等来的（脚本给的判据，便于核对）
+      rawMode: 'split',       // ★ 这份原文来自哪种预设：'split' 分镜（要切）/'text' 文本（**不切**）
       rawHistory: [],         // ★ 历次原文：新的一次生成**不覆盖**旧的，旧的都留在这里
       rawOpen: false,
     };
@@ -2294,29 +2295,61 @@ function boardData() {
   return S.board;
 }
 
+/**
+ * 预设分**两类**（用户要求）：
+ *   🎬 分镜预设 —— 让它写分镜，取回后按分隔符/「大分镜N」标题**切成条目**
+ *   📝 文本预设 —— 写剧本剧情用，取回就是正文，**不分割**
+ * 内置两条删不掉、改不了（想改先「复制一份」）。
+ */
+const BUILTIN_TEXT_ID = '__text';
+const PRESET_KINDS = {
+  storyboard: { label: '分镜预设', icon: '🎬', hint: '写分镜 → 取回自动切成条目' },
+  text: { label: '文本预设', icon: '📝', hint: '写剧情文本 → 取回就是正文，不分割' },
+};
+const BUILTIN_PRESETS = [
+  { id: '', kind: 'storyboard', name: '内置 · 写分镜（默认）' },
+  { id: BUILTIN_TEXT_ID, kind: 'text', name: '内置 · 写剧情文本' },
+];
+const isBuiltinPreset = (p) => !!p && BUILTIN_PRESETS.some((b) => b.id === p.id);
+const presetKindOf = (p) => ((p && p.kind === 'text') ? 'text' : 'storyboard');
+
+/** 预设全表（内置两条在最前） */
+function askPresetList(d) {
+  return BUILTIN_PRESETS.concat((d && d.askPresets) || []);
+}
+/** 当前选中的那一条（找不到就回内置分镜） */
+function askPreset(d) {
+  const id = (d && d.askPresetId) || '';
+  return askPresetList(d).find((p) => p.id === id) || BUILTIN_PRESETS[0];
+}
+/** 当前这套是"分镜"还是"文本" —— **取回后要不要分割，就看它** */
+function askPresetKind(d) {
+  return presetKindOf(askPreset(d));
+}
+/** 当前预设要用的正文（内置两条用内置模板；用户那份的 text 为空也回落到对应内置模板） */
+function askPresetText(d) {
+  const p = askPreset(d);
+  const t = p.text ? String(p.text).trim() : '';
+  if (t) return t;
+  return p.kind === 'text' ? DEFAULT_TEXT_TEMPLATE : DEFAULT_ASK_TEMPLATE;
+}
+
 const RAW_HISTORY_MAX = 8;      // 原文历史最多留几份（每份可能很长，别无限堆）
 const newPresetId = () => 'ps' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
 /**
  * 老数据迁移：以前只有一份自定义预设（`askTemplate`），现在改成预设库 ——
- * 非空且与默认不同就搬成库里的一条，**不丢用户改过的东西**。
+ * 非空且与默认不同就搬成库里的一条（**分镜预设**），**不丢用户改过的东西**。
  */
 function migrateBoard(d) {
   const old = String(d.askTemplate || '').trim();
   if (!old || old === DEFAULT_ASK_TEMPLATE.trim()) return;
   if ((d.askPresets || []).length) return;
-  const p = { id: newPresetId(), name: '我改过的预设', text: old };
+  const p = { id: newPresetId(), kind: 'storyboard', name: '我改过的预设', text: old };
   d.askPresets = [p];
   d.askPresetId = p.id;
   d.askTemplate = '';
   setTimeout(() => saveBoard(true), 0);      // 挪完立刻落盘（异步，避免在 boardData 里递归）
-}
-
-/** 当前预设要用的正文：预设库 → 内置默认 */
-function askPresetText(d) {
-  const x = (d.askPresets || []).find((p) => p.id === d.askPresetId);
-  const t = x && x.text ? String(x.text).trim() : '';
-  return t || DEFAULT_ASK_TEMPLATE;
 }
 
 /** 存盘（防抖 600ms；传 true 立刻存） */
@@ -2325,10 +2358,11 @@ function saveBoard(now) {
   const payload = {
     script: d.script, seconds: d.seconds, skills: d.skills, site: d.site || 'doubao',
     askTemplate: d.askTemplate || '',
-    askPresets: (d.askPresets || []).map(({ id, name, text }) => ({ id, name, text })),
+    askPresets: (d.askPresets || []).map(({ id, name, kind, text }) => ({ id, name, kind, text })),
     askPresetId: d.askPresetId || '',
     rawReply: d.rawReply || '',
     rawWhy: d.rawWhy || '',
+    rawMode: d.rawMode || 'split',
     rawHistory: (d.rawHistory || []).map(({ at, why, text }) => ({ at, why, text })),
     items: d.items.map(({ id, prompt, images, state, note }) => ({ id, prompt, images, state, note })),
   };
@@ -2420,8 +2454,9 @@ function buildBoard() {
     <div class="pb-body">
       <div class="pb-left">
         <div class="pb-gen">
-          <button class="btn mini" id="pbGen" title="把剧情 + 勾选的 skill 投给 DeepSeek，让它写分镜">🧠 生成分镜</button>
-          <button class="btn mini" id="pbGenTpl" title="改「生成分镜」投出去的那段指令（可以存多份）">⚙ 预设</button>
+          <select class="pb-preset" id="pbPreset" title="用哪份预设 —— 分镜预设取回会切成条目，文本预设取回就是正文"></select>
+          <button class="btn mini" id="pbGen">🧠 生成分镜</button>
+          <button class="btn mini" id="pbGenTpl" title="管理预设（分镜 / 文本两类，可存多份）">⚙ 预设</button>
           <button class="btn mini" id="pbRaw" title="AI 取回的完整原文都在这儿 —— 先看全貌，再点「✂ 分割成条目」">📄 原文</button>
           <button class="btn mini" id="pbGenView" style="display:none" title="看看刚生成的分镜（可改完重填）">查看</button>
           <button class="btn mini" id="pbGenUndo" style="display:none" title="撤销这次生成，回到之前的条目">撤销</button>
@@ -2481,6 +2516,14 @@ function buildBoard() {
     boardData().site = ev.target.value;
     saveBoard(true);
     toast('投放目标改为：' + siteName(ev.target.value), 'ok');
+  };
+  boardEl.querySelector('#pbPreset').onchange = (ev) => {
+    const d = boardData();
+    d.askPresetId = ev.target.value;
+    saveBoard(true);
+    renderBoardPreset();
+    const p = askPreset(d);
+    toast(`已切到「${p.name || '未命名'}」：${PRESET_KINDS[presetKindOf(p)].hint}`, 'ok', 4200);
   };
   boardEl.querySelector('#pbGen').onclick = () => generateStoryboard();
   boardEl.querySelector('#pbGenTpl').onclick = () => openAskTemplateEditor();
@@ -2619,12 +2662,34 @@ function renderBoard() {
       + (d.skills.length ? ` · skill ${d.skills.length}` : '');
   }
   renderBoardSecs();
+  renderBoardPreset();
   renderBoardItems();
   const siteEl = boardEl.querySelector('#pbSite');
   if (siteEl && siteEl.value !== (d.site || 'doubao')) siteEl.value = d.site || 'doubao';
   // skill 树只在第一次打开时拉一次：它只在挂载/移除技能目录时才变，
   // 每 renderBoard 都拉会把接口刷爆（debug.log 里被 GET /api/skills 刷屏过）
   if (!boardSkillsDone) { boardSkillsDone = true; renderBoardSkills(); }
+}
+
+/** 工作台上的预设下拉：**分镜预设 / 文本预设**分组；选哪类，生成按钮就是哪种行为 */
+function renderBoardPreset() {
+  if (!boardEl) return;
+  const sel = boardEl.querySelector('#pbPreset');
+  if (!sel) return;
+  const d = boardData();
+  const one = (p) => `<option value="${esc(p.id)}">${esc(p.name || '未命名')}</option>`;
+  const group = (kind) => askPresetList(d).filter((p) => presetKindOf(p) === kind).map(one).join('');
+  sel.innerHTML = `<optgroup label="🎬 分镜预设（取回切成条目）">${group('storyboard')}</optgroup>`
+    + `<optgroup label="📝 文本预设（写剧情 · 不分割）">${group('text')}</optgroup>`;
+  sel.value = (d.askPresetId || '');
+  const kind = askPresetKind(d);
+  const btn = boardEl.querySelector('#pbGen');
+  if (btn) {
+    btn.textContent = kind === 'text' ? '📝 生成文本' : '🧠 生成分镜';
+    btn.title = kind === 'text'
+      ? '把要求投给 DeepSeek 写剧情正文 —— 取回**不分割**，直接进「📄 原文」窗口'
+      : '把剧情 + 勾选的 skill 投给 DeepSeek 写分镜 —— 取回自动切成条目';
+  }
 }
 
 function renderBoardSecs() {
@@ -2742,13 +2807,15 @@ function onDeliverEvent(d) {
   // ---- 生成分镜的编排：ask（投剧情+skill 并发送）→ 等生成 → read（取回）→ 切条预览 ----
   if (d.kind === 'ask') {
     if (d.state === 'done') {
-      setGenState('DeepSeek 正在生成分镜…');
+      const textMode = boardGen.mode === 'text';
+      setGenState(textMode ? 'DeepSeek 正在写剧情文本…' : 'DeepSeek 正在生成分镜…');
       setTimeout(() => {
         // expect：告诉脚本"什么才算正式回答"（认分隔符，或每个大分镜的标题行）。
         // 脚本用它挡"只等到思考链"的情况 —— 判据由前端给，脚本不硬编码预设格式。
+        // ⚠️ 文本预设**不下发判据**：写剧情本来就没有固定格式，脚本别拦它。
         apiPost('/api/deliver/queue', {
           kind: 'read', site: 'deepseek',
-          expect: { split: BOARD_SPLIT, head: SB_HEAD },
+          expect: textMode ? null : { split: BOARD_SPLIT, head: SB_HEAD },
         }).catch((e) => { boardGen.busy = false; setGenState('取回失败：' + e.message); });
       }, 2500);
     } else if (d.state === 'failed') {
@@ -2761,9 +2828,18 @@ function onDeliverEvent(d) {
     if (d.state === 'done') {
       const raw = String(d.result || '');
       boardGen.busy = false;
+      const textMode = boardGen.mode === 'text';
       // ★ 顺序是"**先贴原文、再分割**"：完整原文先落进「📄 原文」窗口并打开，
       //   分割只读它、不回写，所以原文永远不会被切分/落条目这些动作改掉（历史也保留）。
-      setRawReply(raw, d.message || '');
+      setRawReply(raw, d.message || '', textMode ? 'text' : 'split');
+      if (textMode) {
+        // 📝 文本预设：取回就是正文 —— **不分割**（用户明确要求）
+        setGenState(`收到剧情文本 ${raw.length} 字（文本预设 · 未分割）`);
+        setRawFoot('📝 **文本模式**：取回的就是剧情正文，**没有切割**。要拿去用点「复制全文」；'
+          + '想拿它继续做分镜，点「→ 填进剧情框」再切到 🎬 分镜预设。');
+        toast('剧情文本已取回（未分割）', 'ok', 5000);
+        return;
+      }
       const { parts, mode } = splitStoryboard(trimBeforeFirstToken(raw));
       const heads = countBigShots(raw);
       // 「该切开却没切开」：文本里明明有 ≥2 个大分镜标题，却只切出 1 条
@@ -2860,6 +2936,28 @@ const DEFAULT_ASK_TEMPLATE = [
   '- 本要求与参考资料冲突时，以本要求为准。',
 ].join('\n');
 
+/**
+ * 生成**剧情文本**的默认预设（内置文本预设用；用户也可以复制一份改成自己的）。
+ * ⚠️ 和分镜预设是两个用途：这份**只写剧情正文**，明确禁止分镜术语 ——
+ * 取回后**不分割**（`askPresetKind()` = 'text' 时走这条路）。
+ */
+const DEFAULT_TEXT_TEMPLATE = [
+  '【任务】根据下面的要求，写「漫剧」的剧情文本 —— **只写剧情，不写分镜**。',
+  '',
+  '【素材 / 要求 / 已有剧情】',
+  '{{script}}',
+  '',
+  '【剧情怎么写】',
+  '- 用自然段写清楚：谁、在哪、发生什么、情绪怎么走、这一段的转折点在哪。',
+  '- **不要**出现分镜术语：不要「大分镜 / 小分镜」、不要镜头号、不要「0-5s」这种时长区间、',
+  '  不要景别 / 机位 / 运镜 / 光线描述 —— 那些是下一步"生成分镜"才做的事。',
+  '- 人物、场景、称呼前后保持一致。',
+  '- 长度按内容需要来，别为了凑字数重复。',
+  '',
+  '【输出格式】',
+  '- 只输出剧情正文：不要解释、不要总结、不要开场白和结束语。',
+].join('\n');
+
 /** 把预设指令渲染成真正要投出去的那段文字 */
 function buildAskText(d) {
   const tpl = askPresetText(d);      // 预设库 → 内置默认（见 askPresetText）
@@ -2870,34 +2968,39 @@ function buildAskText(d) {
 }
 
 /**
- * ⚙ 预设提示词 —— **预设库**：可以存多份（不同题材 / 不同平台各一份），选一份来用。
- * 内置默认（`DEFAULT_ASK_TEMPLATE`）永远在列表第一项，不可改名/删除，但可以「复制一份」再改。
+ * ⚙ 预设 —— **预设库，分两类**（用户要求）：
+ *   🎬 分镜预设（写分镜 → 取回**切成条目**）   📝 文本预设（写剧情 → 取回**不分割**）
+ * 内置两条（分镜默认 / 文本默认）删不掉也改不了，想改先「⧉ 复制一份」。
  */
 function openAskTemplateEditor() {
   const d = boardData();
   if (!Array.isArray(d.askPresets)) d.askPresets = [];
 
   showModal(`
-    <h3>⚙ 生成分镜的预设提示词</h3>
+    <h3>⚙ 预设（分镜 / 文本两类）</h3>
     <div class="modal-sub">
-      这里能存**多份**预设（比如"Q版打斗""15 秒竖屏"各一份），选哪份就用哪份。
-      可用占位符：<code>{{script}}</code> 剧情 · <code>{{seconds}}</code> 秒数 · <code>{{split}}</code> 分隔符
+      <b>🎬 分镜预设</b>：让它写分镜 —— 取回后按分隔符 / 「大分镜N」标题**切成条目**。<br>
+      <b>📝 文本预设</b>：写剧本剧情用 —— 取回就是**正文，不分割**。<br>
+      占位符：<code>{{script}}</code> 本轮要求 / 已有剧情 · <code>{{seconds}}</code> 单次时长 ·
+      <code>{{split}}</code> 分隔符（分镜预设用）
     </div>
     <div class="tpl-bar">
       <select id="tplSel" class="tpl-sel" title="用哪一份预设"></select>
-      <button class="btn mini" id="tplNew" title="新建一份空预设（内容先照抄内置默认）">＋ 新建</button>
+      <button class="btn mini" id="tplNewSb" title="新建一份分镜预设（内容照抄内置分镜模板）">＋ 分镜预设</button>
+      <button class="btn mini" id="tplNewTx" title="新建一份文本预设（内容照抄内置文本模板）">＋ 文本预设</button>
       <button class="btn mini" id="tplCopy" title="照当前内容复制一份再改">⧉ 复制一份</button>
       <button class="btn mini" id="tplRename">✎ 改名</button>
       <button class="btn mini danger" id="tplDel">🗑 删除</button>
     </div>
     <div class="tpl-namerow" id="tplNameRow" style="display:none">
-      <input type="text" id="tplName" maxlength="60" placeholder="预设名字，例如：Q版打斗 / 15秒竖屏">
+      <input type="text" id="tplName" maxlength="60"
+        placeholder="预设名字，例如：Q版打斗 / 15秒竖屏 / 第3集剧情">
       <button class="btn mini primary" id="tplNameOk">确定</button>
       <button class="btn mini" id="tplNameCancel">取消</button>
     </div>
     <textarea id="askTpl" class="ask-tpl" spellcheck="false"></textarea>
     <div class="modal-actions">
-      <button class="btn" id="tplReset" title="把这一份的内容恢复成内置默认">这一份恢复默认内容</button>
+      <button class="btn" id="tplReset" title="把这一份的内容恢复成它那一类的内置模板">这一份恢复默认内容</button>
       <button class="btn" data-close>取消</button>
       <button class="btn primary" id="askSave">保存并使用</button>
     </div>
@@ -2907,28 +3010,38 @@ function openAskTemplateEditor() {
   const ta = $('#askTpl');
   const nameRow = $('#tplNameRow');
   const nameInput = $('#tplName');
-  const cur = () => d.askPresets.find((p) => p.id === d.askPresetId) || null;   // null = 内置默认
+  const defText = (kind) => (kind === 'text' ? DEFAULT_TEXT_TEMPLATE : DEFAULT_ASK_TEMPLATE);
+  const cur = () => askPreset(d);                    // 一定有效（含内置两条）
+  const curKind = () => presetKindOf(cur());
 
-  /** 下拉列表：内置默认 + 库里的预设 */
+  /** 下拉：两类分开列（内置的排在各自那类最前） */
   function fillSel() {
-    sel.innerHTML = `<option value="">（内置默认）</option>`
-      + d.askPresets.map((p) => `<option value="${esc(p.id)}">${esc(p.name || '未命名')}</option>`).join('');
-    sel.value = d.askPresetId || '';
+    const one = (p) => `<option value="${esc(p.id)}">${esc(p.name || '未命名')}</option>`;
+    const group = (k) => askPresetList(d).filter((p) => presetKindOf(p) === k).map(one).join('');
+    sel.innerHTML = `<optgroup label="🎬 分镜预设（取回切成条目）">${group('storyboard')}</optgroup>`
+      + `<optgroup label="📝 文本预设（写剧情 · 不分割）">${group('text')}</optgroup>`;
+    sel.value = (d.askPresetId || '');
   }
-  /** 把某一份的内容装进编辑框 */
+  /** 把当前这条装进编辑框 */
   function loadText() {
     const p = cur();
-    ta.value = (p && p.text) ? p.text : DEFAULT_ASK_TEMPLATE;
-    $('#tplDel').disabled = !p;
-    $('#tplRename').disabled = !p;
-    $('#tplReset').disabled = !p;
-    ta.readOnly = !p;      // 内置默认改不了 —— 要改先「复制一份」（避免"改了却没法保存"的糊涂账）
-    ta.title = p ? '' : '内置默认不可直接改：点「⧉ 复制一份」，在副本上改';
+    const builtin = isBuiltinPreset(p);
+    ta.value = p.text ? p.text : defText(presetKindOf(p));    // 内置 / 正文空 → 回落到该类内置模板
+    $('#tplDel').disabled = builtin;
+    $('#tplRename').disabled = builtin;
+    $('#tplReset').disabled = builtin;
+    ta.readOnly = builtin;    // 内置改不了 —— 要改先「复制一份」，免得"改了却存不进去"
+    ta.title = builtin ? '内置预设不可直接改：点「⧉ 复制一份」，在副本上改' : '';
+    $('#tplCopy').textContent = builtin ? '⧉ 复制一份再改' : '⧉ 复制一份';
+    syncBoardPreset();
   }
+  /** 工作台那个下拉/按钮跟着变 */
+  function syncBoardPreset() { if (boardEl) renderBoardPreset(); }
   /** 改名输入行（新建 / 改名共用） */
   function askName(title, init, onOk) {
     nameRow.style.display = 'flex';
     nameInput.value = init || '';
+    nameInput.placeholder = title || '预设名字';
     nameInput.focus();
     $('#tplNameOk').onclick = () => {
       const n = nameInput.value.trim();
@@ -2937,11 +3050,11 @@ function openAskTemplateEditor() {
       onOk(n);
     };
     $('#tplNameCancel').onclick = () => { nameRow.style.display = 'none'; };
-    nameRow.dataset.title = title;
   }
-  /** 库里加一份并切过去 */
-  function addPreset(name, text) {
-    const p = { id: newPresetId(), name, text: text == null ? DEFAULT_ASK_TEMPLATE : text };
+  /** 库里加一份并切过去（正文默认照抄该类内置模板，方便接着改） */
+  function addPreset(name, kind, text) {
+    const k = PRESET_KINDS[kind] ? kind : 'storyboard';
+    const p = { id: newPresetId(), kind: k, name, text: text == null ? defText(k) : text };
     d.askPresets.push(p);
     d.askPresetId = p.id;
     fillSel(); loadText(); saveBoard(true);
@@ -2951,45 +3064,54 @@ function openAskTemplateEditor() {
   fillSel(); loadText();
 
   sel.onchange = () => { d.askPresetId = sel.value; loadText(); saveBoard(true); };
-  $('#tplNew').onclick = () => askName('新建预设', '', (n) => { addPreset(n, DEFAULT_ASK_TEMPLATE); toast(`已新建「${n}」，内容照抄内置默认`, 'ok'); });
+  $('#tplNewSb').onclick = () => askName('新建分镜预设', '', (n) => {
+    addPreset(n, 'storyboard');
+    toast(`已新建分镜预设「${n}」（取回会切成条目）`, 'ok');
+  });
+  $('#tplNewTx').onclick = () => askName('新建文本预设', '', (n) => {
+    addPreset(n, 'text');
+    toast(`已新建文本预设「${n}」（取回**不分割**）`, 'ok');
+  });
   $('#tplCopy').onclick = () => {
     const base = cur();
-    askName('复制成新预设', (base ? base.name : '内置默认') + ' 副本', (n) => {
-      addPreset(n, ta.value);       // 用**编辑框里当前内容**复制（可能已经改过）
+    askName('复制成新预设', (base.name || '未命名') + ' 副本', (n) => {
+      addPreset(n, curKind(), ta.value);      // 用**编辑框里当前内容**复制（可能已经改过）
       toast(`已复制成「${n}」`, 'ok');
     });
   };
   $('#tplRename').onclick = () => {
     const p = cur();
-    if (!p) return;
-    askName('改名字', p.name, (n) => { p.name = n; fillSel(); saveBoard(true); toast('已改名', 'ok'); });
+    if (isBuiltinPreset(p)) return;
+    askName('改名字', p.name, (n) => { p.name = n; fillSel(); loadText(); saveBoard(true); toast('已改名', 'ok'); });
   };
   $('#tplDel').onclick = () => {
     const p = cur();
-    if (!p) return;
+    if (isBuiltinPreset(p)) return;
     if (!confirm(`删除预设「${p.name || '未命名'}」？`)) return;
     d.askPresets = d.askPresets.filter((x) => x.id !== p.id);
     d.askPresetId = '';
     fillSel(); loadText(); saveBoard(true);
-    toast('已删除（回到内置默认）', 'ok');
+    toast('已删除（回到内置分镜预设）', 'ok');
   };
   $('#tplReset').onclick = () => {
-    if (!cur()) return;
-    ta.value = DEFAULT_ASK_TEMPLATE;
-    toast('内容已恢复成内置默认 —— 记得点「保存并使用」', 'warn', 5000);
+    if (isBuiltinPreset(cur())) return;
+    ta.value = defText(curKind());
+    toast('内容已恢复成该类内置模板 —— 记得点「保存并使用」', 'warn', 5000);
   };
   $('#askSave').onclick = () => {
     const p = cur();
-    if (!p) {                       // 内置默认：只是"用它"，没有东西要存
-      d.askPresetId = '';
+    if (isBuiltinPreset(p)) {          // 内置：只是"用它"，没有东西要存
+      d.askPresetId = p.id;
       saveBoard(true);
+      syncBoardPreset();
       closeModal();
-      return toast('在用内置默认预设', 'ok');
+      return toast(`在用「${p.name}」：${PRESET_KINDS[presetKindOf(p)].hint}`, 'ok', 4200);
     }
     p.text = ta.value;
     saveBoard(true);
+    syncBoardPreset();
     closeModal();
-    toast(`已保存并启用「${p.name || '未命名'}」`, 'ok');
+    toast(`已保存并启用「${p.name || '未命名'}」：${PRESET_KINDS[presetKindOf(p)].hint}`, 'ok', 4200);
   };
 }
 
@@ -3062,16 +3184,20 @@ async function generateStoryboard() {
   const d = boardData();
   if (!String(d.script || '').trim()) return toast('先写「剧情 / 本轮要求」', 'warn');
   if (boardGen.busy) return toast('正在生成中，稍等', 'warn');
+  const kind = askPresetKind(d);          // ★ 这一轮是"分镜"还是"文本"，取回时按它分流
+  const textMode = kind === 'text';
   boardGen.busy = true;
-  setGenState('正在投给 DeepSeek…');
+  boardGen.mode = kind;
+  setGenState(textMode ? '正在投给 DeepSeek 写剧情文本…' : '正在投给 DeepSeek…');
   try {
     const files = (d.skills || []).map((s) => ({ dirId: s.dirId, rel: s.rel, name: baseName(s.rel) }));
     const r = await apiPost('/api/deliver/queue', {
       kind: 'ask', site: 'deepseek', text: buildAskText(d), files,
     });
-    toast(`已投给 DeepSeek：剧情 + ${r.files} 个 skill`
+    toast(`已投给 DeepSeek：${textMode ? '剧情要求' : '剧情'} + ${r.files} 个 skill`
       + (r.dropped ? `（有 ${r.dropped} 个超出上限没投）` : '')
-      + '，投完会自动发送', r.dropped ? 'warn' : 'ok', 5000);
+      + (textMode ? '，取回**不分割**' : '，投完会自动发送')
+      + '', r.dropped ? 'warn' : 'ok', 5000);
   } catch (e) {
     boardGen.busy = false;
     setGenState('投递失败：' + e.message);
@@ -3109,6 +3235,7 @@ function buildRawWindow() {
       <select id="sbrHist" class="sbr-hist" title="历次取回的原文 —— 新的不覆盖旧的"></select>
       <span class="pb-sub" id="sbrMeta"></span>
       <span class="spacer"></span>
+      <button class="btn mini" id="sbrToScript" title="把整段填进工作台的「剧情 / 本轮要求」（写剧情 → 做分镜的接续）">→ 填进剧情框</button>
       <button class="btn mini" id="sbrCopy" title="复制全文（系统剪贴板）">复制全文</button>
       <button class="btn mini primary" id="sbrSplit" title="按窗口里的文本切成分镜条目">✂ 分割成条目</button>
       <button class="pb-mini" id="sbrClose" title="关闭（原文已存盘，随时再开）">×</button>
@@ -3125,6 +3252,7 @@ function buildRawWindow() {
   rawEl.querySelector('#sbrClose').onclick = () => closeRawWindow();
   rawEl.querySelector('#sbrSplit').onclick = () => splitFromRawWindow();
   rawEl.querySelector('#sbrCopy').onclick = () => copyRawWindow();
+  rawEl.querySelector('#sbrToScript').onclick = () => fillRawToScript();
   rawEl.querySelector('#sbrHist').onchange = (ev) => {
     const d = boardData();
     const i = Number(ev.target.value);
@@ -3134,6 +3262,7 @@ function buildRawWindow() {
     const ta = rawEl.querySelector('#sbrText');
     ta.value = h.text;
     d.rawViewHist = i;                 // 只是"在看历史"，不动 rawReply
+    d.rawViewMode = (h.mode === 'text') ? 'text' : 'split';   // 历史那份也有自己的类型
     renderRawMeta();
   };
   rawEl.querySelector('#sbrText').oninput = (ev) => {
@@ -3159,18 +3288,21 @@ function closeRawWindow() {
   saveBoard();
 }
 
-/** 把这一轮取回的**完整原文**放进来（**不覆盖**旧原文：旧的进 rawHistory） */
-function setRawReply(text, why) {
+/** 把这一轮取回的**完整原文**放进来（**不覆盖**旧原文：旧的进 rawHistory）
+ *  mode：'split' = 分镜（要切）/ 'text' = 剧情文本（**不切**） */
+function setRawReply(text, why, mode) {
   const d = boardData();
   const t = String(text || '');
   if (!t.trim()) return;
   const prev = String(d.rawReply || '').trim();
   if (prev && prev !== t.trim()) {
-    d.rawHistory = [{ at: Date.now(), why: d.rawWhy || '', text: d.rawReply }]
-      .concat(d.rawHistory || []).slice(0, RAW_HISTORY_MAX);
+    d.rawHistory = [{
+      at: Date.now(), why: d.rawWhy || '', mode: d.rawMode || 'split', text: d.rawReply,
+    }].concat(d.rawHistory || []).slice(0, RAW_HISTORY_MAX);
   }
   d.rawReply = t;
   d.rawWhy = why || '';
+  d.rawMode = (mode === 'text') ? 'text' : 'split';
   d.rawViewHist = -1;
   saveBoard(true);
   openRawWindow();
@@ -3198,16 +3330,21 @@ function renderRawHist() {
   const d = boardData();
   const sel = rawEl.querySelector('#sbrHist');
   const hist = d.rawHistory || [];
-  sel.innerHTML = `<option value="-1">当前（${(d.rawReply || '').length} 字）</option>`
+  const mark = (m) => (m === 'text' ? '📝' : '🎬');
+  sel.innerHTML = `<option value="-1">当前 ${mark(d.rawMode)}（${(d.rawReply || '').length} 字）</option>`
     + hist.map((h, i) => {
       const t = new Date(h.at || 0);
       const hm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
-      return `<option value="${i}">${hist.length - i}. ${hm} · ${(h.text || '').length} 字</option>`;
+      return `<option value="${i}">${mark(h.mode)} ${hist.length - i}. ${hm} · ${(h.text || '').length} 字</option>`;
     }).join('');
   sel.value = String(d.rawViewHist == null ? -1 : d.rawViewHist);
 }
 
-/** meta + 层级树：几个大分镜、每个大分镜里几个小分镜（"层级要明确"） */
+/**
+ * meta + 层级树：几个大分镜、每个大分镜里几个小分镜（"层级要明确"）。
+ * ⚠️ 文本预设取回的是**剧情正文**，本来就没有分段 —— 那种情况不能报"没识别到分段"的警告，
+ * 要明确写"文本模式 · 没切割"（否则用户以为出错了）。
+ */
 function renderRawMeta() {
   if (!rawEl) return;
   const d = boardData();
@@ -3216,13 +3353,38 @@ function renderRawMeta() {
   const meta = rawEl.querySelector('#sbrMeta');
   const tree = rawEl.querySelector('#sbrTree');
   if (!text.trim()) { meta.textContent = '（空）'; tree.innerHTML = ''; return; }
+  const looking = (d.rawViewHist || 0) >= 0;
+  const mode = looking ? (d.rawViewMode || 'split') : (d.rawMode || 'split');
+  if (mode === 'text') {
+    meta.textContent = `📝 文本结果 · 完整 ${text.length} 字 · **不分割**`
+      + (looking ? '（正在看历史）' : '');
+    tree.innerHTML = `<div class="sbr-node textmode">📝 文本模式：这是剧情正文，取回时**没有切割** —— `
+      + `要用就「复制全文」，或点「→ 填进剧情框」再切到 🎬 分镜预设去做分镜。</div>`;
+    return;
+  }
   const howCut = info.mode === 'token' ? `按「${BOARD_SPLIT}」` : (info.list.length > 1 ? `按「${SB_HEAD}N」标题` : '没识别到分段');
-  meta.textContent = `完整 ${text.length} 字 · ${info.list.length} 个大分镜 / ${info.subTotal} 个小分镜 · 分割${howCut}`;
+  meta.textContent = `🎬 分镜 · 完整 ${text.length} 字 · ${info.list.length} 个大分镜 / ${info.subTotal} 个小分镜 · 分割${howCut}`
+    + (looking ? '（正在看历史）' : '');
   tree.innerHTML = info.list.length > 1
     ? info.list.map((x, i) => `<div class="sbr-node"><b>${SB_HEAD}${i + 1}</b>`
       + `<span>${esc(x.title || '（没写标题）')}</span><i>${x.subs} 个小分镜</i></div>`).join('')
     : `<div class="sbr-node warn">没识别到分段 —— 这份文本里既没有 ${esc(BOARD_SPLIT)}，`
       + `也没有行首的「${esc(SB_HEAD)}N｜」标题（分割会切不出东西）</div>`;
+}
+
+/** 把原文窗口里的整段填进「剧情 / 本轮要求」—— 写剧情 → 做分镜的顺畅接续 */
+function fillRawToScript() {
+  const ta = rawEl && rawEl.querySelector('#sbrText');
+  const text = ta ? ta.value : '';
+  if (!text.trim()) return toast('窗口里还没有内容', 'warn');
+  const d = boardData();
+  d.script = text;
+  saveBoard(true);
+  if (boardEl) {
+    const box = boardEl.querySelector('#pbScript');
+    if (box) box.value = text;
+  }
+  toast(`已填进「剧情 / 本轮要求」（${text.length} 字）—— 切到 🎬 分镜预设就能生成分镜`, 'ok', 6000);
 }
 
 function setRawFoot(msg) {
