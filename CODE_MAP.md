@@ -416,6 +416,15 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
    （有输入框或 `input[type=file]` 才领），`runTask()` 开头再查一次（SPA 可能已跳走）；
    `next` 请求还会带上 `page=<路径>`，后端记进日志，一眼看出任务被哪个页面领走。
    **凡是"第三方页面里执行"的能力，都要先判断"这个页面能不能干"，再决定领不领活**
+8. **脚本绝不能在 iframe 里干活，但也绝不能在 UserScript 头加 `@noframes`** —— 两个方向都会坏：
+   - **不禁 iframe 会坏**：豆包对话页里内嵌 `/drive-iframe/drive/home/`，篡改猴默认把脚本注入**所有 frame**，
+     iframe 里那个实例一样轮询、一样抢任务，抢到就必然失败。诊断里 `路径 /drive-iframe/...`
+     看着像"用户跑去云盘页了"，其实人一直在对话页 —— **别被地址误导**。
+     正确修法：`boot()` 里 `if (window.top !== window.self) return;`（**只在投放平台这一支**判，
+     本地页面那一支不能判，见下条）
+   - **加了 `@noframes` 也会坏**：安装检测（`checkMjaInstalled`）用的是 webui 里一个**隐藏 iframe**
+     加载 `/tools/probe.html`，靠脚本在那个 iframe 里挂 `dataset.mjaReady` 来判断"装没装"
+     —— 加了 `@noframes`，检测会**静默失效**（一直显示"还没装好"）
 
 ---
 

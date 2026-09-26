@@ -859,10 +859,17 @@
     if (!document.body) { setTimeout(boot, 300); return; }
     if (!IS_TARGET) {
       // 本地页面：挂个标记，「投放素材助手」面板靠它显示"已安装"
+      // ⚠️ 这一步**不能**因为是 iframe 就退出 —— 安装检测用的正是一个隐藏 iframe。
+      //（也正因为如此，脚本头**不能加 @noframes**，加了检测就废了。）
       document.documentElement.dataset.mjaReady = '1';
       log('已在本地页面挂上「已安装」标记');
       return;
     }
+    // 投放平台：**只在顶层页面干活**。
+    // 豆包对话页里嵌了 /drive-iframe/... 的云盘 iframe，而脚本会被注入到所有 frame，
+    // 那个实例一样在轮询、一样能抢到任务，然后必然报"找不到输入框"——
+    // 实际踩过：诊断里当前路径是 /drive-iframe/drive/home/（用户明明在对话页）。
+    if (window.top !== window.self) return;
     build();
     startDeliverLoop();
     log('已注入，当前页面已有', findInputs().length, '个 input[type=file]');
