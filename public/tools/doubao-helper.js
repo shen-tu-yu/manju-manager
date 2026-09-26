@@ -416,25 +416,39 @@
         // ① 把"剧情 + 输出要求"写进输入框
         const textOk = task.text ? injectText(task.text) : false;
         if (!textOk) throw new Error('剧情没写进输入框');
-        // ② 把勾选的 skill 当**附件**投进去（技能目录只列 .md/.txt，所以不会投 yaml）
+        // ② 把勾选的 skill **一个个**当附件投进去（技能目录只列 .md/.txt，所以不会投 yaml）
+        const plan = task.files || [];
         let files = 0;
-        for (const f of (task.files || [])) {
-          const raw = await getJSON(`${FM}/api/skills/file?id=${encodeURIComponent(f.dirId)}&rel=${encodeURIComponent(f.rel)}`);
+        const failed = [];
+        for (const f of plan) {
           const name = f.name || pathName(f.rel) || 'skill.md';
-          const file = new File([raw.content || ''], name, { type: 'text/markdown' });
-          const inputs = findInputs();
-          if (!inputs.length) { log('这个页面没有上传控件，跳过 skill：', name); continue; }
-          injectToInput(inputs[0], [file]);
-          files++;
-          await sleep(400);
+          try {
+            const raw = await getJSON(`${FM}/api/skills/file?id=${encodeURIComponent(f.dirId)}&rel=${encodeURIComponent(f.rel)}`);
+            const file = new File([raw.content || ''], name, { type: 'text/markdown' });
+            const inputs = findInputs();
+            if (!inputs.length) throw new Error('页面没有上传控件');
+            // 挑一个**能接受这个文件**的控件：别把 .md 塞进只收图片的那个 input
+            const input = inputs.find((i) => acceptOk(i, file)) || inputs[0];
+            if (!injectToInput(input, [file])) throw new Error('注入失败');
+            files++;
+            await sleep(400);          // 一个一个来，给页面时间把附件挂上、顺序不乱
+          } catch (e) {
+            failed.push(name + '（' + (e.message || e) + '）');
+          }
         }
-        await sleep(300);
+        // 一个附件都没投进去就别发送了 —— 否则 DeepSeek 会收到一条"没有 skill"的消息，污染对话
+        if (plan.length && files === 0) {
+          throw new Error(`剧情写进去了，但 ${plan.length} 个 skill 一个都没投进去：${failed.join('；')}`
+            + ' —— 已中止发送，请检查该站点的上传控件');
+        }
+        await sleep(500);
         // ③ 自动发送（用户选的：投完直接发）
         const btn = findSendButton();
         if (btn && !btn.disabled) btn.click();
         else pressEnter(findInputBox());
         ok = true;
-        msg = `已投剧情（${String(task.text || '').length} 字）+ ${files} 个 skill，已发送`;
+        msg = `已投剧情（${String(task.text || '').length} 字）+ ${files}/${plan.length} 个 skill，已发送`
+          + (failed.length ? `；没投进去：${failed.join('、')}` : '');
       } else if (task.kind === 'read') {
         const text = await waitForReply(180000);
         if (!text) throw new Error('等了三分钟也没抓到回复内容 —— 确认 AI 已经开始回答');

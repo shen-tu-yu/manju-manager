@@ -2765,7 +2765,9 @@ async function generateStoryboard() {
     const r = await apiPost('/api/deliver/queue', {
       kind: 'ask', site: 'deepseek', text: buildAskText(d), files,
     });
-    toast(`已投给 DeepSeek：剧情 + ${r.files} 个 skill，投完会自动发送`, 'ok', 5000);
+    toast(`已投给 DeepSeek：剧情 + ${r.files} 个 skill`
+      + (r.dropped ? `（有 ${r.dropped} 个超出上限没投）` : '')
+      + '，投完会自动发送', r.dropped ? 'warn' : 'ok', 5000);
   } catch (e) {
     boardGen.busy = false;
     setGenState('投递失败：' + e.message);

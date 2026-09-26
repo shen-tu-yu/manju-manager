@@ -1389,12 +1389,17 @@ const server = http.createServer(async (req, res) => {
       const site = String(b.site || 'doubao');
 
       if (kind === 'ask') {
+        // skill 是**组合投放**的，上限给足（20 个），别像以前那样静默截断
         const files = (Array.isArray(b.files) ? b.files : [])
           .filter((f) => f && f.dirId && f.rel)
-          .slice(0, 10)
+          .slice(0, 20)
           .map((f) => ({ dirId: String(f.dirId), rel: String(f.rel), name: String(f.name || '') }));
         const t = queueDeliver('ask', { site, text: String(b.text || ''), files });
-        return sendJSON(res, 200, { ok: true, id: t.id, files: files.length, chars: t.text.length });
+        return sendJSON(res, 200, {
+          ok: true, id: t.id, files: files.length,
+          chars: t.text.length,
+          dropped: Math.max(0, (Array.isArray(b.files) ? b.files.length : 0) - files.length),
+        });
       }
 
       if (kind === 'read') {
