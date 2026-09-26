@@ -807,7 +807,7 @@ async function ingestFile(srcRoot, name, target, newBase) {
     gid: kind === 'vgroup' ? String(target.gid || '') : '',
   };
 
-  // 记忆「最近常用」：**只记非"进未归类"的入库**（用户要求：那 10 次里不算直接进未归类）
+  // 记忆「最近常用」：**只记非"进未归类"的入库**（那 10 次里不算直接进未归类）
   const wentLoose = kind !== 'vgroup' && destDirAbs.toLowerCase() === tRoot.path.toLowerCase();
   if (!wentLoose) {
     const hist = Array.isArray(config.ingestHistory) ? config.ingestHistory.slice() : [];

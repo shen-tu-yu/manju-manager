@@ -19,7 +19,7 @@
    *             生成中发送按钮会变成停止，所以 stop 找不到、send 找得到 = 已经生成完了。
    *   reply  —— AI 回复容器（取回结果时用）
    *
-   * 选择器来源写在 CODE_MAP 2.6：豆包是用户从 DevTools 实测给的；DeepSeek 来自 ArcRift 的
+   * 选择器来源写在 CODE_MAP 2.6：豆包是从 DevTools 实测得来；DeepSeek 来自 ArcRift 的
    * PLATFORM_SELECTORS.md（2026-05 实测）。查不到实测选择器的平台，就只留通用兜底 + 靠失败诊断。
    */
   const SITES = [
@@ -353,7 +353,7 @@
     } catch { return 'unknown'; }
   }
 
-  /** 诊断：把页面上像按钮的东西列出来，随回执发给本地服务（写进 debug.log，方便我按实际 DOM 适配） */
+  /** 诊断：把页面上像按钮的东西列出来，随回执发给本地服务（写进 debug.log，方便按实际 DOM 适配） */
   function describeEl(el) {
     const r = el.getBoundingClientRect();
     const cls = typeof el.className === 'string'
@@ -414,7 +414,7 @@
   /**
    * 这个节点是不是「思考链」（推理过程）里的东西？
    * ⚠️ **只看一层父级不够**（第一版就是只看一层）：思考链的 class 可能挂在上面两三层。
-   * 为什么非揪住不放 —— 用户实测：**思考链阶段界面才"动"，正式生成阶段界面不推**，
+   * 为什么非揪住不放 —— 实测：**思考链阶段界面才"动"，正式生成阶段界面不推**，
    * 所以"文本停止变化"极易在思考链尾部成立；漏掉思考链就会把推理过程当正式回答取走。
    * 所以往上爬到 5 层，任何一层写着 think / reason / cot / 思考 / 思维链 就算。
    */
@@ -573,7 +573,7 @@
 
   /**
    * 把最后一条回复滚到底部。
-   * ⚠️ **用户实测：正式生成阶段页面不自动推界面，只有思考链阶段会推**。
+   * ⚠️ **实测：正式生成阶段页面不自动推界面，只有思考链阶段会推**。
    * 不推的后果不只是"看不见"：内容留在视野外，渲染器可能压根不渲染它
    * （虚拟化 / `content-visibility`），`innerText` 和 `querySelectorAll('h1..h6')` 都会缺内容
    * → 取回半篇、或者 `###` 补不回来。所以等待期间由**我们替页面滚**。
@@ -713,7 +713,7 @@
             + ' —— 已中止发送，请检查该站点的上传控件');
         }
         await sleep(500);
-        // ③ 自动发送（用户选的：投完直接发）
+        // ③ 自动发送（投完直接发）
         const btn = findSendButton();
         if (btn && !btn.disabled) btn.click();
         else pressEnter(findInputBox());
@@ -773,7 +773,7 @@
         }
         let textOk = false;
         if (task.prompt) textOk = injectText(task.prompt);
-        // 提示词没投进去就算失败：否则用户以为投好了，一点发送发出个没有提示词的内容
+        // 提示词没投进去就算失败：否则会以为投好了，一点发送发出个没有提示词的内容
         if (task.prompt && !textOk) {
           probe = buttonProbe();
           throw new Error(`投了 ${sent} 张图，但提示词没写进输入框`);
@@ -1265,7 +1265,7 @@
     // 投放平台：**只在顶层页面干活**。
     // 豆包对话页里嵌了 /drive-iframe/... 的云盘 iframe，而脚本会被注入到所有 frame，
     // 那个实例一样在轮询、一样能抢到任务，然后必然报"找不到输入框"——
-    // 实际踩过：诊断里当前路径是 /drive-iframe/drive/home/（用户明明在对话页）。
+    // 实际踩过：诊断里当前路径是 /drive-iframe/drive/home/（人明明在对话页）。
     if (window.top !== window.self) return;
     build();
     startDeliverLoop();

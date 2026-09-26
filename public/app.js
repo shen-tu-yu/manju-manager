@@ -1435,7 +1435,7 @@ function openBatchRename() {
     <h3>批量重命名</h3>
     <div class="modal-sub">${useAll ? `全选模式：当前视图全部 ${count} 个文件（含未加载）` : `共 ${count} 个文件`}，按当前顺序编号</div>
     <label>文件名前缀</label>
-    <input type="text" id="brPrefix" placeholder="例如：域外恶魔_" value="">
+    <input type="text" id="brPrefix" placeholder="例如：示例角色_" value="">
     <label>起始序号</label>
     <input type="number" id="brStart" value="1" min="0">
     <label>序号位数</label>
@@ -2296,7 +2296,7 @@ function boardData() {
 }
 
 /**
- * 预设分**两类**（用户要求）：
+ * 预设分**两类**（硬性要求）：
  *   🎬 分镜预设 —— 让它写分镜，取回后按分隔符/「大分镜N」标题**切成条目**
  *   📝 文本预设 —— 写剧本剧情用，取回就是正文，**不分割**
  * 内置两条删不掉、改不了（想改先「复制一份」）。
@@ -2326,7 +2326,7 @@ function askPreset(d) {
 function askPresetKind(d) {
   return presetKindOf(askPreset(d));
 }
-/** 当前预设要用的正文（内置两条用内置模板；用户那份的 text 为空也回落到对应内置模板） */
+/** 当前预设要用的正文（内置两条用内置模板；自己那份的 text 为空也回落到对应内置模板） */
 function askPresetText(d) {
   const p = askPreset(d);
   const t = p.text ? String(p.text).trim() : '';
@@ -2339,7 +2339,7 @@ const newPresetId = () => 'ps' + Date.now().toString(36) + Math.random().toStrin
 
 /**
  * 老数据迁移：以前只有一份自定义预设（`askTemplate`），现在改成预设库 ——
- * 非空且与默认不同就搬成库里的一条（**分镜预设**），**不丢用户改过的东西**。
+ * 非空且与默认不同就搬成库里的一条（**分镜预设**），**不丢已经改过的内容**。
  */
 function migrateBoard(d) {
   const old = String(d.askTemplate || '').trim();
@@ -2410,7 +2410,7 @@ function closeBoard() {
 }
 
 /** 放大 ↔ 缩小（Esc 就是调它；缩小态是右下小框，能继续接拖进来的图片） */
-/** 工作台的「大窗 / 小窗」各记一套布局 —— 两种模式都能拖能缩（用户要求） */
+/** 工作台的「大窗 / 小窗」各记一套布局 —— 两种模式都能拖能缩（硬性要求） */
 function applyBoardLayout() {
   if (!boardEl) return;
   const d = boardData();
@@ -2833,7 +2833,7 @@ function onDeliverEvent(d) {
       //   分割只读它、不回写，所以原文永远不会被切分/落条目这些动作改掉（历史也保留）。
       setRawReply(raw, d.message || '', textMode ? 'text' : 'split');
       if (textMode) {
-        // 📝 文本预设：取回就是正文 —— **不分割**（用户明确要求）
+        // 📝 文本预设：取回就是正文 —— **不分割**（明确要求）
         setGenState(`收到剧情文本 ${raw.length} 字（文本预设 · 未分割）`);
         setRawFoot('📝 **文本模式**：取回的就是剧情正文，**没有切割**。要拿去用点「复制全文」；'
           + '想拿它继续做分镜，点「→ 填进剧情框」再切到 🎬 分镜预设。');
@@ -2878,7 +2878,7 @@ function onDeliverEvent(d) {
 
 /* ---------- 用文本 AI（DeepSeek）生成分镜：投剧情 + skill → 取回 → 按 ### 切条 → 预览挑 ---------- */
 
-const BOARD_SPLIT = '###';      // 固定分隔符（用户定的：让 AI 每段以 ### 开头）
+const BOARD_SPLIT = '###';      // 每段的分隔符（让 AI 每段以 ### 开头）
 /**
  * 兜底判据：预设要求每个大分镜的第一行都是「大分镜N｜小标题」。
  * ⚠️ 为什么需要兜底：`###` 是 Markdown 标记，**网页会把它渲染成标题**，
@@ -2889,7 +2889,7 @@ const SB_HEAD = '大分镜';       // 每个大分镜标题行的开头（**脚�
 const SB_HEAD_RE = new RegExp(`^[ \\t]*${SB_HEAD}[ \\t]*\\d`);
 
 /**
- * 生成分镜的**默认预设指令**。用户可以在工作台点「⚙ 预设」改掉，改完记住。
+ * 生成分镜的**默认预设指令**。可以在工作台点「⚙ 预设」改掉，改完记住。
  * 占位符：{{script}} 剧情、{{seconds}} 单次生成时长、{{split}} 分隔符。
  *
  * ⚠️ 注意这里的分层：**大分镜** = 一次豆包生成（正好 {{seconds}} 秒），
@@ -2937,7 +2937,7 @@ const DEFAULT_ASK_TEMPLATE = [
 ].join('\n');
 
 /**
- * 生成**剧情文本**的默认预设（内置文本预设用；用户也可以复制一份改成自己的）。
+ * 生成**剧情文本**的默认预设（内置文本预设用；也可以复制一份改成自己的）。
  * ⚠️ 和分镜预设是两个用途：这份**只写剧情正文**，明确禁止分镜术语 ——
  * 取回后**不分割**（`askPresetKind()` = 'text' 时走这条路）。
  */
@@ -2968,7 +2968,7 @@ function buildAskText(d) {
 }
 
 /**
- * ⚙ 预设 —— **预设库，分两类**（用户要求）：
+ * ⚙ 预设 —— **预设库，分两类**（硬性要求）：
  *   🎬 分镜预设（写分镜 → 取回**切成条目**）   📝 文本预设（写剧情 → 取回**不分割**）
  * 内置两条（分镜默认 / 文本默认）删不掉也改不了，想改先「⧉ 复制一份」。
  */
@@ -3214,7 +3214,7 @@ function trimBeforeFirstToken(text) {
 }
 
 /* ---------- 📄 分镜原文窗口：先贴完整原文，再谈分割 ----------
-   ⚠️ 为什么要有这个窗口（用户提的）：取回的东西不能"一进来就被切碎、看不到全貌"。
+   ⚠️ 为什么要有这个窗口：取回的东西不能"一进来就被切碎、看不到全貌"。
    所以流程改成 **先把完整原文贴进这个窗口 → 才分割**，而且：
      · 分割**只读**窗口里的文本，不回写 → 原文不会被切分动作改掉
      · 新一轮生成的原文**不覆盖**旧的，旧的进 `rawHistory`（窗口左上角可切回来）
@@ -3267,7 +3267,7 @@ function buildRawWindow() {
   };
   rawEl.querySelector('#sbrText').oninput = (ev) => {
     const d = boardData();
-    d.rawReply = ev.target.value;      // 用户改的就是原文（存盘，但不参与分割以外的动作）
+    d.rawReply = ev.target.value;      // 这里改的就是原文（存盘，但不参与分割以外的动作）
     d.rawViewHist = -1;
     saveBoard();
     renderRawMeta();
@@ -3343,7 +3343,7 @@ function renderRawHist() {
 /**
  * meta + 层级树：几个大分镜、每个大分镜里几个小分镜（"层级要明确"）。
  * ⚠️ 文本预设取回的是**剧情正文**，本来就没有分段 —— 那种情况不能报"没识别到分段"的警告，
- * 要明确写"文本模式 · 没切割"（否则用户以为出错了）。
+ * 要明确写"文本模式 · 没切割"（否则会以为出错了）。
  */
 function renderRawMeta() {
   if (!rawEl) return;
@@ -3411,7 +3411,7 @@ function splitFromRawWindow() {
   const d = boardData();
   const ta = rawEl.querySelector('#sbrText');
   const text = ta.value;
-  d.rawReply = text;                 // 用户可能改过 → 存起来（下次打开还在）
+  d.rawReply = text;                 // 可能被改过 → 存起来（下次打开还在）
   d.rawViewHist = -1;
   saveBoard(true);
   renderRawMeta();
@@ -3483,7 +3483,7 @@ function openStoryboardReview(parts) {
 }
 
 /* ===================== 浮层通用：能拖、能缩、能记住 =====================
-   用户要求"弹窗都这样写" —— 所以**所有弹窗都走这一套**，不许各写一份：
+   要求：**所有弹窗都照这个来** —— 不许各写一份：
      · 抓标题栏拖动；右下角拖动 = 改大小；双击标题栏 = 最大化/还原
      · 位置和尺寸记在 localStorage，刷新后还在；窗口变小会自动夹回视口内
    层级不在这里管（各按 CODE_MAP 3.13 那张表）。
@@ -3553,8 +3553,8 @@ function floatable(el, opt) {
     el.style.left = L.x + 'px';
     el.style.top = L.y + 'px';
     if (L.w) el.style.width = L.w + 'px'; else el.style.width = '';     // 0 = 交给 CSS
-    // 高度：0 = 自适应（模态框内容长短不一）；用户拉过就固定，并且要把 CSS 的 max-height 让开，
-    // 否则"拉高了却没变高"（用户会以为缩放坏了）
+    // 高度：0 = 自适应（模态框内容长短不一）；手动拉过就固定，并且要把 CSS 的 max-height 让开，
+    // 否则"拉高了却没变高"（会以为缩放坏了）
     if (L.h) { el.style.height = L.h + 'px'; el.style.maxHeight = 'none'; }
     else { el.style.height = ''; el.style.maxHeight = ''; }
     el.dataset.floatKey = ctl.key;
@@ -3625,7 +3625,7 @@ function floatable(el, opt) {
     if (ctl.max) {
       ctl.lay = ctl.max;
       ctl.max = null;
-      commit();                                   // 还原 → 落盘（这才是用户要的布局）
+      commit();                                   // 还原 → 落盘（这才是要保留的布局）
     } else {
       ctl.max = { x: ctl.lay.x, y: ctl.lay.y, w: ctl.lay.w, h: ctl.lay.h };
       ctl.lay = { x: 8, y: 8, w: window.innerWidth - 16, h: Math.max(240, window.innerHeight - 16) };
@@ -3762,7 +3762,7 @@ const DELIVER_TARGETS = [
   { id: 'pavo', icon: '🎬', name: 'Pavo', url: 'https://app.pavo-ai.work/' },
 ];
 
-/** 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） */
+/** 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在交互时调用，没问题） */
 const siteName = (id) => (DELIVER_TARGETS.find((t) => t.id === id) || { name: '豆包' }).name;
 
 /** 记住上次选的投放平台（脚本一份通用，选哪个只是决定"打开"按钮开谁） */
