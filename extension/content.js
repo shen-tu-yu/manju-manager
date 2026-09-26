@@ -332,9 +332,45 @@
     } catch (e) { return ['probe 失败: ' + e.message]; }
   }
 
-  async function reportTask(id, ok, message, probe) {
-    try { await postJSON(FM + '/api/deliver/done', { id, ok, message, probe: probe || null }); }
-    catch (e) { log('回执失败', e.message); }
+  async function reportTask(id, ok, message, probe, result) {
+    try {
+      await postJSON(FM + '/api/deliver/done', {
+        id, ok, message, probe: probe || null, result: result || '',
+      });
+    } catch (e) { log('回执失败', e.message); }
+  }
+
+  /**
+   * 等文本 AI 把回复吐完，再抓**最后一条**回复的纯文本。
+   * 判定"生成完了"用最土也最稳的办法：内容连续 3 次采样（约 4.5 秒）没变化。
+   */
+  async function waitForReply(timeoutMs) {
+    const sels = (SITE && SITE.reply) || [];
+    const pick = () => {
+      for (const sel of sels) {
+        let nodes = [];
+        try { nodes = document.querySelectorAll(sel); } catch { continue; }
+        if (!nodes.length) continue;
+        const el = nodes[nodes.length - 1];
+        const t = (el.innerText || el.textContent || '').trim();
+        if (t) return t;
+      }
+      return '';
+    };
+    const t0 = Date.now();
+    let last = '', stable = 0;
+    while (Date.now() - t0 < timeoutMs) {
+      await sleep(1500);
+      const cur = pick();
+      if (cur && cur === last) {
+        stable++;
+        if (stable >= 3 && cur.length > 10) return cur;
+      } else {
+        stable = 0;
+        last = cur;
+      }
+    }
+    return last;
   }
 
   /** 这个页面能不能干活：有输入框或上传控件才算 —— 豆包云盘/设置这类页面什么也没有 */
@@ -350,14 +386,43 @@
 
   async function runTask(task) {
     log('收到任务', task.id, task.kind);
-    let ok = false, msg = '', probe = null;
+    let ok = false, msg = '', probe = null, result = '';
     try {
       // 双保险：领取时页面能干活，执行时可能已经跳走了（豆包是 SPA）
       if (!pageCanWork()) {
         probe = buttonProbe();
-        throw new Error(`当前豆包页面（${pageInfo()}）不是对话/生成页，找不到输入框和上传控件 —— 请切回对话页面再投`);
+        throw new Error(`当前页面（${pageInfo()}）不是对话/生成页，找不到输入框和上传控件 —— 请切回对话页面再投`);
       }
-      if (task.kind === 'send') {
+      if (task.kind === 'ask') {
+        // ① 把"剧情 + 输出要求"写进输入框
+        const textOk = task.text ? injectText(task.text) : false;
+        if (!textOk) throw new Error('剧情没写进输入框');
+        // ② 把勾选的 skill 当**附件**投进去（技能目录只列 .md/.txt，所以不会投 yaml）
+        let files = 0;
+        for (const f of (task.files || [])) {
+          const raw = await getJSON(`${FM}/api/skills/file?id=${encodeURIComponent(f.dirId)}&rel=${encodeURIComponent(f.rel)}`);
+          const name = f.name || pathName(f.rel) || 'skill.md';
+          const file = new File([raw.content || ''], name, { type: 'text/markdown' });
+          const inputs = findInputs();
+          if (!inputs.length) { log('这个页面没有上传控件，跳过 skill：', name); continue; }
+          injectToInput(inputs[0], [file]);
+          files++;
+          await sleep(400);
+        }
+        await sleep(300);
+        // ③ 自动发送（用户选的：投完直接发）
+        const btn = findSendButton();
+        if (btn && !btn.disabled) btn.click();
+        else pressEnter(findInputBox());
+        ok = true;
+        msg = `已投剧情（${String(task.text || '').length} 字）+ ${files} 个 skill，已发送`;
+      } else if (task.kind === 'read') {
+        const text = await waitForReply(180000);
+        if (!text) throw new Error('等了三分钟也没抓到回复内容 —— 确认 AI 已经开始回答');
+        ok = true;
+        result = text;
+        msg = `已取回 ${text.length} 字`;
+      } else if (task.kind === 'send') {
         const btn = findSendButton();
         if (btn && !btn.disabled) {
           btn.click();
@@ -408,8 +473,8 @@
     }
     state.diag = `任务 ${task.kind}：${msg}`;
     renderDiag();
-    toast(msg, ok);
-    await reportTask(task.id, ok, msg, probe);
+    toast(msg.length > 60 ? msg.slice(0, 60) + '…' : msg, ok);
+    await reportTask(task.id, ok, msg, probe, result);
   }
 
   let deliverTimer = null;

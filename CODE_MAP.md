@@ -309,16 +309,30 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
   仍然**不许平铺**）
 - 存盘：`saveBoard()` 防抖 600ms；结构变化（增删/移动/配图）用 `saveBoard(true)` 立刻存
 
-### 3.11 投放通道（工作台 → 助手脚本 → 豆包）
+### 3.11 投放通道（工作台 → 助手脚本 → 豆包 / Pavo）
 
 - 后端：`queueDeliver()` 入队（内存 `deliverTasks`，**不持久化** —— 投放是即时动作），
-  两种命令 `deliver` / `send`；状态 `pending → running → done/failed`，每步都 `sseSend('deliver', …)`
+  命令 `deliver` / `send` / `ask` / `read`；状态 `pending → running → done/failed`，每步都 `sseSend('deliver', …)`
 - 脚本侧（`doubao-helper.user.js`）：`startDeliverLoop()` 每 1.2 秒 `GET /api/deliver/next?site=<id>`，
   取到就 `runTask()` 执行，完事 `POST /api/deliver/done` 回执（`boot()` 里启动，只在 `IS_TARGET` 时）
 - 前端：`deliverItem()` / `sendItem()` 入队；`onDeliverEvent()`（SSE `deliver` 事件）更新条目状态。
   ⚠️ 收到回执要重渲染时**先看焦点在不在条目里**（`document.activeElement.closest('.pb-item')`）——
   用户正在打字就别重建 DOM，否则输入被打断
 - 「发送」按钮只在状态含「待发送 / 已投放」时出现（`/待发送|已投放/.test(item.state)`）
+- ⚠️ **`/api/deliver/next` 返回任务时必须把该 kind 需要的字段都带上** —— 曾经漏了 `text` / `files`，
+  表现是"脚本收到一个空任务"（剧情和 skill 都没投进去）。加新命令时按这里对照检查
+
+### 3.12 用文本 AI 生成分镜（`ask` → `read` → 切条 → 预览）
+
+**这才是"提示词投放"最初要的链路**：webui 写剧情 + 选 skill → DeepSeek 出分镜 → 取回切成条目。
+
+- 命令：`ask`（把剧情文本 + skill 附件投进去，**投完自动发送**）/ `read`（等生成完再抓回复）；
+  都走同一套队列，`site=deepseek` 与其他站点隔离
+- **指令由前端组装**（`buildAskText`）：剧情 + 「每镜 N 秒」+ 「每段以 `###` 开头，只输出分镜正文」
+- 编排在 `onDeliverEvent` 里：`ask done` → 2.5 秒后入队 `read` → `read done` 带 `result` →
+  `splitStoryboard()` 按 `###` 切 → `openStoryboardReview()` 弹预览（勾选 + 可改 + 替换/追加）
+- 脚本侧 `waitForReply()`：抓 `SITE.reply` 里**最后一个**容器，连续 3 次采样（约 4.5 秒）不变才算写完；
+  超时 3 分钟。长文本只回传、**不写进 debug.log**（只记字数）
 
 ---
 

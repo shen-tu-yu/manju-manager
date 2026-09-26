@@ -2,7 +2,7 @@
 
 > **本文件由 `node map.js` 自动生成，不要手改。**
 > 职责、规则、踩坑、排查表在 **[`CODE_MAP.md`](CODE_MAP.md)**（那份不含行号，所以不用维护）。
-> 生成时间：2026/9/26 18:02:51
+> 生成时间：2026/9/26 18:07:52
 
 查行号最快的办法：`node map.js <关键词>`（例：`node map.js 收件箱`）。
 
@@ -10,13 +10,13 @@
 
 | 文件 | 行数 |
 |---|---|
-| `server.js` | 2115 |
+| `server.js` | 2147 |
 | `db.js` | 179 |
 | `launcher.js` | 236 |
 | `browsers.js` | 211 |
-| `public/app.js` | 3644 |
+| `public/app.js` | 3783 |
 | `public/index.html` | 156 |
-| `public/style.css` | 847 |
+| `public/style.css` | 864 |
 
 ## 二、后端路由（49 个分支，全在 `http.createServer` 里）
 
@@ -38,39 +38,39 @@
 | 1296 | GET | `/api/board` |
 | 1306 | POST | `/api/board` |
 | 1329 | GET | `/api/deliver/next` |
-| 1354 | POST | `/api/deliver/done` |
-| 1371 | POST | `/api/deliver/queue` |
-| 1387 | POST | `/api/deliver/send` |
-| 1394 | GET | `/api/deliver/state` |
-| 1404 | GET | `/api/skills/file` |
-| 1422 | GET | `/api/fs/drives` |
-| 1426 | GET | `/api/fs/dirs` |
-| 1445 | GET | `/api/list` |
-| 1477 | GET | `/api/tree` |
-| 1499 | GET | `/api/file` |
-| 1505 | GET | `/api/text` |
-| 1519 | POST | `/api/text` |
-| 1529 | PUT | `/api/upload` |
-| 1558 | POST | `/api/mkdir` |
-| 1570 | POST | `/api/mkdir-template` |
-| 1587 | POST | `/api/rename` |
-| 1602 | POST | `/api/rename-batch` |
-| 1635 | POST | `/api/move` · `/api/copy` |
-| 1670 | POST | `/api/delete` |
-| 1690 | GET | `/api/trash` |
-| 1709 | POST | `/api/trash/restore` |
-| 1735 | POST | `/api/trash/purge` |
-| 1750 | GET | `/api/search` |
-| 1793 | GET | `/api/vgroups` |
-| 1798 | POST | `/api/vgroups` |
-| 1817 | POST | `/api/vgroups/update` |
-| 1829 | POST | `/api/vgroups/assign` |
-| 1847 | POST | `/api/vgroups/delete` |
-| 1861 | POST | `/api/vgroups/materialize` |
-| 1918 | GET | `/api/duplicates` |
-| 1937 | POST | `/api/clipboard` |
-| 1982 | POST | `/api/reveal` |
-| 2000 | GET | `/api/sysinfo` |
+| 1361 | POST | `/api/deliver/done` |
+| 1386 | POST | `/api/deliver/queue` |
+| 1419 | POST | `/api/deliver/send` |
+| 1426 | GET | `/api/deliver/state` |
+| 1436 | GET | `/api/skills/file` |
+| 1454 | GET | `/api/fs/drives` |
+| 1458 | GET | `/api/fs/dirs` |
+| 1477 | GET | `/api/list` |
+| 1509 | GET | `/api/tree` |
+| 1531 | GET | `/api/file` |
+| 1537 | GET | `/api/text` |
+| 1551 | POST | `/api/text` |
+| 1561 | PUT | `/api/upload` |
+| 1590 | POST | `/api/mkdir` |
+| 1602 | POST | `/api/mkdir-template` |
+| 1619 | POST | `/api/rename` |
+| 1634 | POST | `/api/rename-batch` |
+| 1667 | POST | `/api/move` · `/api/copy` |
+| 1702 | POST | `/api/delete` |
+| 1722 | GET | `/api/trash` |
+| 1741 | POST | `/api/trash/restore` |
+| 1767 | POST | `/api/trash/purge` |
+| 1782 | GET | `/api/search` |
+| 1825 | GET | `/api/vgroups` |
+| 1830 | POST | `/api/vgroups` |
+| 1849 | POST | `/api/vgroups/update` |
+| 1861 | POST | `/api/vgroups/assign` |
+| 1879 | POST | `/api/vgroups/delete` |
+| 1893 | POST | `/api/vgroups/materialize` |
+| 1950 | GET | `/api/duplicates` |
+| 1969 | POST | `/api/clipboard` |
+| 2014 | POST | `/api/reveal` |
+| 2032 | GET | `/api/sysinfo` |
 
 ## 三、后端函数 / 常量（60 个函数）
 
@@ -133,11 +133,11 @@
 | 1007 | `collectSkillFiles()` | 递归收模板文件（限深限数，只留白名单扩展名） |
 | 1033 | `normBoardImages()` | / |
 | 1061 | `queueDeliver()` |  |
-| 2046 | `browserInfo()` | 给网页设置面板用：当前选的是谁 + 自动发现的本机浏览器列表 |
-| 2055 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
-| 2102 | `addRoot()` |  |
+| 2078 | `browserInfo()` | 给网页设置面板用：当前选的是谁 + 自动发现的本机浏览器列表 |
+| 2087 | `openBrowser()` | 服务就绪后自动打开浏览器（--open 时启用；配置的浏览器找不到就回退系统默认） |
+| 2134 | `addRoot()` |  |
 
-## 四、前端函数 / 常量（145 个函数）
+## 四、前端函数 / 常量（150 个函数）
 
 | 行 | 名字 | 说明 |
 |---|---|---|
@@ -242,50 +242,55 @@
 | 2321 | `closeBoard()` |  |
 | 2328 | `toggleBoardSize()` | 放大 ↔ 缩小（Esc 就是调它；缩小态是右下小框，能继续接拖进来的图片） |
 | 2341 | `buildBoard()` |  |
-| 2446 | `assignBoardImages()` | / |
-| 2472 | `renderBoardItems()` |  |
-| 2533 | `renderBoard()` |  |
-| 2553 | `renderBoardSecs()` |  |
-| 2566 | `renderBoardSkills()` |  |
-| 2591 | `renderSkillPick()` | skill 选择树（和左侧技能分区同一套层级规则：缩进 + 折叠感） |
-| 2627 | `deliverItem()` | 投放这一条：图 + 提示词入队 |
-| 2650 | `sendItem()` | 让助手脚本去点豆包的发送按钮 |
-| 2662 | `onDeliverEvent()` | 助手脚本的回执（走 SSE）→ 更新对应条目的状态 |
-| 2681 | `showModal()` |  |
-| 2687 | `closeModal()` |  |
-| 2694 | `openSettings()` |  |
-| 2806 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
-| 2819 | `checkMjaInstalled()` | / |
-| 2844 | `dvStatusHTML()` |  |
-| 2851 | `openDeliverPanel()` |  |
-| 2927 | `openHelp()` |  |
-| 2955 | `onSearchInput()` |  |
-| 2967 | `doSearch()` |  |
-| 2988 | `showCtxMenu()` |  |
-| 3048 | `renderCtxMenu()` |  |
-| 3067 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
-| 3100 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
-| 3116 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
-| 3133 | `hideCtxMenu()` |  |
-| 3135 | `revealInExplorer()` |  |
-| 3142 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
-| 3151 | `checkDuplicates()` |  |
-| 3167 | `showDragGhost()` |  |
-| 3176 | `moveDragGhost()` |  |
-| 3182 | `hideDragGhost()` |  |
-| 3186 | `setDropHints()` |  |
-| 3192 | `clearDropTargets()` |  |
-| 3200 | `isFileDrag()` | / |
-| 3217 | `dragKind()` | / |
-| 3228 | `bindEvents()` | / |
-| 3239 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
-| 3269 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
-| 3294 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
-| 3319 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
-| 3370 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
-| 3398 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
-| 3541 | `bindKeyboardEvents()` | / |
-| 3621 | `init()` |  |
+| 2451 | `assignBoardImages()` | / |
+| 2477 | `renderBoardItems()` |  |
+| 2538 | `renderBoard()` |  |
+| 2558 | `renderBoardSecs()` |  |
+| 2571 | `renderBoardSkills()` |  |
+| 2596 | `renderSkillPick()` | skill 选择树（和左侧技能分区同一套层级规则：缩进 + 折叠感） |
+| 2632 | `deliverItem()` | 投放这一条：图 + 提示词入队 |
+| 2655 | `sendItem()` | 让助手脚本去点豆包的发送按钮 |
+| 2667 | `onDeliverEvent()` | 助手脚本的回执（走 SSE）→ 更新对应条目的状态 |
+| 2724 | `buildAskText()` | 组装给文本 AI 的指令：剧情 + 秒数要求 + 输出格式（含分隔符） |
+| 2743 | `splitStoryboard()` | 把 AI 的回复按 ### 切成一条条 |
+| 2751 | `setGenState()` |  |
+| 2757 | `generateStoryboard()` |  |
+| 2777 | `openStoryboardReview()` | 切好的分镜先给用户过一遍：勾选 + 可改 + 选替换还是追加 |
+| 2820 | `showModal()` |  |
+| 2826 | `closeModal()` |  |
+| 2833 | `openSettings()` |  |
+| 2945 | `openDeliverMenu()` | 点左侧栏按钮 → 弹出平台菜单 |
+| 2958 | `checkMjaInstalled()` | / |
+| 2983 | `dvStatusHTML()` |  |
+| 2990 | `openDeliverPanel()` |  |
+| 3066 | `openHelp()` |  |
+| 3094 | `onSearchInput()` |  |
+| 3106 | `doSearch()` |  |
+| 3127 | `showCtxMenu()` |  |
+| 3187 | `renderCtxMenu()` |  |
+| 3206 | `showTreeCtxMenu()` | 左侧目录树的右键菜单（真实文件夹 / 虚拟分类 / 散-未归类 / 根目录） |
+| 3239 | `renamePathByPath()` | 重命名任意文件夹（树里右键用） |
+| 3255 | `deletePathByPath()` | 删除任意文件夹到回收站（树里右键用） |
+| 3272 | `hideCtxMenu()` |  |
+| 3274 | `revealInExplorer()` |  |
+| 3281 | `copyToClipboard()` | 把选中的文件按 Windows 文件格式放进系统剪贴板，之后可在任意程序里 Ctrl+V |
+| 3290 | `checkDuplicates()` |  |
+| 3306 | `showDragGhost()` |  |
+| 3315 | `moveDragGhost()` |  |
+| 3321 | `hideDragGhost()` |  |
+| 3325 | `setDropHints()` |  |
+| 3331 | `clearDropTargets()` |  |
+| 3339 | `isFileDrag()` | / |
+| 3356 | `dragKind()` | / |
+| 3367 | `bindEvents()` | / |
+| 3378 | `bindToolbarEvents()` | 左树 ＋ / 视图切换 / 排序 / 筛选 / 缩放 / 滚动加载 |
+| 3408 | `bindLogEvents()` | 操作日志面板：开关、清空、点外部关闭 |
+| 3433 | `bindNavEvents()` | 导航按钮 / 侧栏按钮 / 搜索框 |
+| 3458 | `bindContentEvents()` | 内容区：单击选中 / 双击打开 / 右键菜单 / 点空白关菜单 |
+| 3509 | `bindOverlayEvents()` | 灯箱 / 模态遮罩 / 左侧分割条拖拽 |
+| 3537 | `bindDragDropEvents()` | 拖拽：素材内部移动 + 外部文件拖入上传（从 bindEvents 拆出，纯搬迁） |
+| 3680 | `bindKeyboardEvents()` | / |
+| 3760 | `init()` |  |
 
 ### 前端顶层常量
 
@@ -317,8 +322,9 @@
 | 2265 | `BOARD_IMAGES_MAX` |  |
 | 2267 | `newBoardItem` |  |
 | 2273 | `boardImageCount` | 整块板子上总共配了多少张图 |
-| 2796 | `DELIVER_TARGETS` |  |
-| 2803 | `siteName` | 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） |
+| 2721 | `BOARD_SPLIT` |  |
+| 2935 | `DELIVER_TARGETS` |  |
+| 2942 | `siteName` | 平台 id → 显示名（工作台/提示里用；注意它定义在工作台后面，但只在用户操作时调用，没问题） |
 
 ## 五、db.js（179 行）
 

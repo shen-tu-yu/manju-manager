@@ -1346,7 +1346,14 @@ const server = http.createServer(async (req, res) => {
       LOG(`[投放] 脚本领取 ${t.id}（${t.kind}${page ? ' · 来自 ' + page : ''}）`);
       sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: 'running', message: '' });
       return sendJSON(res, 200, {
-        task: { id: t.id, kind: t.kind, images: t.images || [], prompt: t.prompt || '' },
+        task: {
+          id: t.id,
+          kind: t.kind,
+          images: t.images || [],      // deliver 用
+          prompt: t.prompt || '',      // deliver 用
+          text: t.text || '',          // ask 用（剧情 + 输出要求）
+          files: t.files || [],        // ask 用（skill 附件）
+        },
       });
     }
 
@@ -1358,25 +1365,50 @@ const server = http.createServer(async (req, res) => {
       t.state = b.ok ? 'done' : 'failed';
       t.message = String(b.message || '');
       t.finishedAt = Date.now();
-      LOG(`[投放] ${t.id} ${t.state}：${t.message}`);
+      // 取回的长文本（read 命令用）：存下来并推给网页；日志只记长度，别把 debug.log 撑爆
+      if (typeof b.result === 'string' && b.result.trim()) t.result = b.result.slice(0, 200000);
+      LOG(`[投放] ${t.id} ${t.state}：${t.message}${t.result ? `（带回 ${t.result.length} 字）` : ''}`);
       if (Array.isArray(b.probe) && b.probe.length) {          // 脚本附带的页面诊断 → 进 debug.log
         t.probe = b.probe.slice(0, 20).map(String);
         LOG(`[投放] ${t.id} 页面诊断：\n      ` + t.probe.join('\n      '));
       }
-      sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: t.state, message: t.message });
+      sseSend('deliver', {
+        id: t.id, kind: t.kind, itemId: t.itemId || '',
+        state: t.state, message: t.message, result: t.result || '',
+      });
       return sendJSON(res, 200, { ok: true });
     }
 
-    // 网页入队：投放某一条（它的多张图 + 提示词）
+    // 网页入队：三种命令
+    //   deliver —— 投某一条的图 + 提示词（豆包/Pavo 生成视频）
+    //   ask     —— 把"剧情 + skill 模板"投给文本 AI（DeepSeek）并自动发送
+    //   read    —— 把文本 AI 的回复取回来（脚本等它生成完再抓）
     if (p === '/api/deliver/queue' && req.method === 'POST') {
       const b = await body();
+      const kind = String(b.kind || 'deliver');
+      const site = String(b.site || 'doubao');
+
+      if (kind === 'ask') {
+        const files = (Array.isArray(b.files) ? b.files : [])
+          .filter((f) => f && f.dirId && f.rel)
+          .slice(0, 10)
+          .map((f) => ({ dirId: String(f.dirId), rel: String(f.rel), name: String(f.name || '') }));
+        const t = queueDeliver('ask', { site, text: String(b.text || ''), files });
+        return sendJSON(res, 200, { ok: true, id: t.id, files: files.length, chars: t.text.length });
+      }
+
+      if (kind === 'read') {
+        const t = queueDeliver('read', { site });
+        return sendJSON(res, 200, { ok: true, id: t.id });
+      }
+
       const images = (Array.isArray(b.images) ? b.images : [])
         .filter((x) => x && x.root && x.path)
         .slice(0, BOARD_IMAGES_MAX)
         .map((x) => ({ root: String(x.root), path: String(x.path) }));
       const t = queueDeliver('deliver', {
         itemId: String(b.itemId || ''),
-        site: String(b.site || 'doubao'),
+        site,
         images,
         prompt: String(b.prompt || ''),
       });

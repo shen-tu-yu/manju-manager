@@ -2356,6 +2356,10 @@ function buildBoard() {
     </div>
     <div class="pb-body">
       <div class="pb-left">
+        <div class="pb-gen">
+          <button class="btn mini" id="pbGen" title="把剧情 + 勾选的 skill 投给 DeepSeek，让它写分镜">🧠 生成分镜</button>
+          <div class="pb-sub" id="pbGenState"></div>
+        </div>
         <label>剧情 / 本轮要求</label>
         <textarea id="pbScript" spellcheck="false" placeholder="例：第 3 集，无双割草 30 秒打斗，主角用剑，场景在竹林…"></textarea>
         <label>每个镜头的秒数（会写进给 AI 的要求里）</label>
@@ -2410,6 +2414,7 @@ function buildBoard() {
     saveBoard(true);
     toast('投放目标改为：' + siteName(ev.target.value), 'ok');
   };
+  boardEl.querySelector('#pbGen').onclick = () => generateStoryboard();
 
   // 从素材管理器拖图片进来 → 配给某一条（这次拖拽由工作台接管，不当成"移动到文件夹"）
   boardEl.addEventListener('dragover', (ev) => {
@@ -2661,6 +2666,39 @@ async function sendItem(it) {
 /** 助手脚本的回执（走 SSE）→ 更新对应条目的状态 */
 function onDeliverEvent(d) {
   if (!d || !d.id) return;
+
+  // ---- 生成分镜的编排：ask（投剧情+skill 并发送）→ 等生成 → read（取回）→ 切条预览 ----
+  if (d.kind === 'ask') {
+    if (d.state === 'done') {
+      setGenState('DeepSeek 正在生成分镜…');
+      setTimeout(() => {
+        apiPost('/api/deliver/queue', { kind: 'read', site: 'deepseek' })
+          .catch((e) => { boardGen.busy = false; setGenState('取回失败：' + e.message); });
+      }, 2500);
+    } else if (d.state === 'failed') {
+      boardGen.busy = false;
+      setGenState('投递失败：' + (d.message || ''));
+    }
+    return;
+  }
+  if (d.kind === 'read') {
+    if (d.state === 'done') {
+      const parts = splitStoryboard(d.result);
+      boardGen.busy = false;
+      if (!parts.length) {
+        setGenState('取回了内容，但没找到 ### 分隔');
+        toast('没切出分镜 —— 看看 AI 是不是没按 ### 输出', 'warn', 6000);
+        return;
+      }
+      setGenState(`收到 ${parts.length} 条分镜`);
+      openStoryboardReview(parts);
+    } else if (d.state === 'failed') {
+      boardGen.busy = false;
+      setGenState('取回失败：' + (d.message || ''));
+    }
+    return;
+  }
+
   const it = boardData().items.find((x) => x.id === d.itemId);
   if (it) {
     if (d.state === 'pending') it.state = '排队中…';
@@ -2674,6 +2712,107 @@ function onDeliverEvent(d) {
     && document.activeElement.closest('.pb-item');
   if (boardEl && boardData().open && !editing) renderBoardItems();
   if (d.state === 'failed' && d.message) toast('投放失败：' + d.message, 'err', 6000);
+}
+
+/* ---------- 用文本 AI（DeepSeek）生成分镜：投剧情 + skill → 取回 → 按 ### 切条 → 预览挑 ---------- */
+
+let boardGen = { state: '', busy: false };
+
+const BOARD_SPLIT = '###';      // 固定分隔符（用户定的：让 AI 每段以 ### 开头）
+
+/** 组装给文本 AI 的指令：剧情 + 秒数要求 + 输出格式（含分隔符） */
+function buildAskText(d) {
+  const secs = d.seconds || 10;
+  return [
+    '【任务】根据下面的剧情/要求，写出用于 AI 视频生成的分镜提示词。',
+    '',
+    '【剧情 / 要求】',
+    String(d.script || '').trim(),
+    '',
+    `【每个镜头的时长】${secs} 秒`,
+    '',
+    '【输出要求】',
+    `1. 每个镜头单独一段，段首必须是 ${BOARD_SPLIT}（单独一行，后面跟这一镜的内容）`,
+    '2. 只输出分镜内容本身：不要解释、不要总结、不要开场白和结束语',
+    '3. 每段是一条可直接用于文生视频的提示词：主体 + 动作 + 镜头运动 + 环境光线',
+    `4. 按 ${secs} 秒一镜来写；能拆就拆，别把好几件事挤进一段`,
+  ].join('\n');
+}
+
+/** 把 AI 的回复按 ### 切成一条条 */
+function splitStoryboard(text) {
+  const token = BOARD_SPLIT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(text || '')
+    .split(new RegExp(`^\\s*${token}\\s*`, 'm'))
+    .map((s) => s.trim())
+    .filter((s) => s.length > 1);
+}
+
+function setGenState(t) {
+  boardGen.state = t || '';
+  const el = boardEl && boardEl.querySelector('#pbGenState');
+  if (el) el.textContent = boardGen.state;
+}
+
+async function generateStoryboard() {
+  const d = boardData();
+  if (!String(d.script || '').trim()) return toast('先写「剧情 / 本轮要求」', 'warn');
+  if (boardGen.busy) return toast('正在生成中，稍等', 'warn');
+  boardGen.busy = true;
+  setGenState('正在投给 DeepSeek…');
+  try {
+    const files = (d.skills || []).map((s) => ({ dirId: s.dirId, rel: s.rel, name: baseName(s.rel) }));
+    const r = await apiPost('/api/deliver/queue', {
+      kind: 'ask', site: 'deepseek', text: buildAskText(d), files,
+    });
+    toast(`已投给 DeepSeek：剧情 + ${r.files} 个 skill，投完会自动发送`, 'ok', 5000);
+  } catch (e) {
+    boardGen.busy = false;
+    setGenState('投递失败：' + e.message);
+    toast(e.message, 'err');
+  }
+}
+
+/** 切好的分镜先给用户过一遍：勾选 + 可改 + 选替换还是追加 */
+function openStoryboardReview(parts) {
+  const rows = parts.map((p, i) => `
+    <label class="sb-row">
+      <input type="checkbox" data-i="${i}" checked>
+      <textarea data-i="${i}" spellcheck="false">${esc(p)}</textarea>
+    </label>`).join('');
+  showModal(`
+    <h3>🧠 DeepSeek 给的分镜（${parts.length} 条）</h3>
+    <div class="modal-sub">勾你要的，可以直接在这里改；确定后填进工作台（每条 = 一个镜头）</div>
+    <div class="sb-list">${rows}</div>
+    <div class="modal-actions">
+      <button class="btn" data-close>取消</button>
+      <button class="btn" id="sbAppend">追加到现有条目</button>
+      <button class="btn primary" id="sbReplace">替换现有条目</button>
+    </div>
+  `);
+  const collect = () => {
+    const out = [];
+    $$('#modalBox .sb-row').forEach((row) => {
+      const cb = row.querySelector('input[type=checkbox]');
+      const ta = row.querySelector('textarea');
+      if (cb.checked && ta.value.trim()) out.push(ta.value.trim());
+    });
+    return out;
+  };
+  const apply = (mode) => {
+    const picked = collect();
+    if (!picked.length) return toast('一条都没勾', 'warn');
+    const d = boardData();
+    const items = picked.map((p) => Object.assign(newBoardItem(), { prompt: p }));
+    if (mode === 'replace') d.items = items;
+    else d.items = d.items.filter((x) => (x.prompt || '').trim() || (x.images || []).length).concat(items);
+    closeModal();
+    renderBoard();
+    saveBoard(true);
+    toast(`已${mode === 'replace' ? '替换为' : '追加'} ${items.length} 条分镜`, 'ok');
+  };
+  $('#sbReplace').onclick = () => apply('replace');
+  $('#sbAppend').onclick = () => apply('append');
 }
 
 /* ===================== 模态框 ===================== */
