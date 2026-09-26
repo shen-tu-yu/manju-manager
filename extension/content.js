@@ -361,11 +361,12 @@
   }
 
   /**
-   * 抓最后一条**正式回答**（并尽量还原 Markdown 标记）。
+   * 抓最后一条**正式回答**的**容器**（并跳过思考过程）。
    * ⚠️ 思考模式会先把"思考过程"渲染出来，它常常是同一层 class，
    * 所以从后往前找、并跳过 class 里带 think/reason/cot 的容器。
+   * 返回元素（取回时要拿它做诊断）；只要文本用 lastReplyText()。
    */
-  function lastReplyText() {
+  function lastReplyEl() {
     const sels = (SITE && SITE.reply) || [];
     for (const sel of sels) {
       let nodes = [];
@@ -375,20 +376,31 @@
         const el = nodes[i];
         const cls = String(el.className || '') + ' ' + String((el.parentElement && el.parentElement.className) || '');
         if (/think|reason|\bcot\b/i.test(cls)) continue;         // 跳过思考过程
-        const t = blockToMarkdown(el);
-        if (t) return t;
+        if (blockToMarkdown(el)) return el;
       }
     }
-    return '';
+    return null;
   }
 
-  /** 兜底：找"复制"按钮并点它，截获 copy 事件里的文本（有页面用 clipboard API，截不到就只能靠 DOM） */
+  function lastReplyText() {
+    const el = lastReplyEl();
+    return el ? blockToMarkdown(el) : '';
+  }
+
+  /**
+   * 兜底：找"复制"按钮并点它，截获 copy 事件里的文本（有页面用 clipboard API，截不到就只能靠 DOM）。
+   * ⚠️ 操作条常常要**先悬停到那条回复上**才渲染出来，所以只找一次不够 ——
+   * 调用方会先 hoverLastReply() 再找一次（见 readByCopy）。
+   */
   function findCopyButton() {
     const words = /复制|copy|拷贝/i;
     const hits = Array.from(document.querySelectorAll('button, [role="button"], [class*="copy" i]'))
       .filter((el) => {
+        // ⚠️ className 也要算进来：图标按钮往往**没有文字**，只有 class 里带 copy
         const t = [el.getAttribute('aria-label') || '', el.getAttribute('title') || '',
-          el.getAttribute('data-testid') || '', el.textContent || ''].join(' ');
+          el.getAttribute('data-testid') || '',
+          typeof el.className === 'string' ? el.className : '',
+          el.textContent || ''].join(' ');
         if (!words.test(t)) return false;
         const r = el.getBoundingClientRect();
         return r.width > 0 && r.height > 0;
@@ -396,14 +408,29 @@
     return hits.length ? hits[hits.length - 1] : null;
   }
 
+  /** 把鼠标"移"到最后一条回复上，逼出悬停才出现的操作条 */
+  function hoverLastReply() {
+    const el = lastReplyEl();
+    if (!el) return;
+    const box = el.closest('[class*="message" i],[class*="chat" i],[class*="answer" i]') || el;
+    for (const type of ['pointerover', 'mouseover', 'mouseenter', 'mousemove']) {
+      try { box.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true })); } catch { /* 忽略 */ }
+    }
+  }
+
   /**
    * 点「复制」按钮拿**Markdown 原文**（比抓 DOM 保真：# 号这类标记不会被渲染吃掉）。
    * 现代页面多半走 `navigator.clipboard.writeText()` —— 那条路**不触发 copy 事件**，
    * 所以先给 clipboard.writeText 打个猴子补丁把它截下来；页面若用 execCommand 则由 copy 事件兜住。
    */
-  async function readByCopyButton() {
-    const btn = findCopyButton();
-    if (!btn) return '';
+  async function readByCopy() {
+    let btn = findCopyButton();
+    if (!btn) {                       // 多半是操作条还没出来（要先悬停）
+      hoverLastReply();
+      await sleep(250);
+      btn = findCopyButton();
+    }
+    if (!btn) return { text: '', btn: null };
     let captured = '';
 
     const clip = navigator.clipboard;
@@ -430,7 +457,30 @@
       document.removeEventListener('copy', onCopy, true);
       if (clip && origWrite) { try { clip.writeText = origWrite; } catch { /* 还原失败也无所谓 */ } }
     }
-    return captured.trim();
+    return { text: captured.trim(), btn };
+  }
+
+  /**
+   * 取回回复时的页面诊断（随回执进 debug.log）。
+   * ⚠️ 为什么要这个：`###` 是 Markdown 标记，页面渲染成标题后 innerText 里就没有了 ——
+   * 到底"模型没输出 ###"还是"输出被渲染掉了"，看这几行就有答案，不用猜。
+   */
+  function readProbe(el, btn, finalText) {
+    const out = [];
+    try {
+      out.push('复制按钮: ' + (btn ? describeEl(btn) : '没找到'));
+      const txt = el ? (el.innerText || el.textContent || '') : '';
+      out.push('回复容器: ' + (el ? describeEl(el) : '没找到'));
+      const hs = el ? Array.from(el.querySelectorAll('h1,h2,h3,h4,h5,h6')) : [];
+      out.push('标题标签: ' + (hs.length
+        ? hs.map((h) => h.tagName + (h.className ? '.' + String(h.className).split(/\s+/)[0] : '')).slice(0, 8).join(' | ')
+        : '0 个 h1~h6'));
+      out.push('DOM 文本含 ###: ' + (txt.includes('###') ? '是' : '否')
+        + ' | 大分镜标题行 ' + txt.split('\n').filter((l) => /^[ \t]*大分镜[ \t]*\d/.test(l)).length + ' 条');
+      out.push('回传文本含 ###: ' + (String(finalText || '').includes('###') ? '是' : '否')
+        + ' | 前 30 字: ' + JSON.stringify(String(finalText || '').slice(0, 30)));
+    } catch (e) { out.push('readProbe 失败: ' + e.message); }
+    return out;
   }
 
   /**
@@ -523,15 +573,18 @@
           + (failed.length ? `；没投进去：${failed.join('、')}` : '');
       } else if (task.kind === 'read') {
         // ① 先等"这一轮的新回复"写完（基线判定，见 waitForReply 注释）
-        const domText = await waitForReply(180000, askBaseline);
-        if (!domText) throw new Error('等了三分钟页面也没出现新回复 —— 确认 AI 已经开始回答');
+        const waited = await waitForReply(180000, askBaseline);
+        if (!waited) throw new Error('等了三分钟页面也没出现新回复 —— 确认 AI 已经开始回答');
         // ② 再点一次「复制」拿 Markdown 原文：# 号这类标记在渲染后的文本里会消失，
         //    复制出来的才是原文（拿不到就退回上面抓到的 DOM 文本）
-        const raw = await readByCopyButton();
-        const text = raw || domText;
+        const el = lastReplyEl();
+        const domText = el ? blockToMarkdown(el) : waited;
+        const cp = await readByCopy();
+        const text = cp.text || domText;
         ok = true;
         result = text;
-        msg = `已取回 ${text.length} 字（${raw ? '复制原文' : 'DOM 文本（标记可能已丢）'}）`;
+        msg = `已取回 ${text.length} 字（${cp.text ? '复制原文' : 'DOM 文本（标记可能已丢）'}）`;
+        probe = readProbe(el, cp.btn, text);      // 每次都记：下次"切不开"能直接看是哪种原因
       } else if (task.kind === 'send') {
         const btn = findSendButton();
         if (btn && !btn.disabled) {

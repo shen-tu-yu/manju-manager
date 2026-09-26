@@ -2699,16 +2699,20 @@ function onDeliverEvent(d) {
   }
   if (d.kind === 'read') {
     if (d.state === 'done') {
-      const parts = splitStoryboard(trimBeforeFirstToken(d.result));
+      const raw = String(d.result || '');
       boardGen.busy = false;
-      if (!parts.length) {
-        setGenState('取回了内容，但没找到 ### 分隔');
+      const { parts, mode } = splitStoryboard(trimBeforeFirstToken(raw));
+      const heads = countBigShots(raw);
+      // 「该切开却没切开」：文本里明明有 ≥2 个大分镜标题，却只切出 1 条
+      // —— 说明边界标记在传输中丢了。这种情况**必须报错**，不能默默塞成一条大杂烩。
+      if (!parts.length || (parts.length < 2 && heads >= 2)) {
+        setGenState(`取回了 ${raw.length} 字，但没切出分镜（边界标记丢了）`);
         toast('没切出分镜 —— 看看取回来的是什么', 'warn', 6000);
-        showRawReply(d.result, '没切出分镜');
+        showRawReply(raw, `没切出分镜：文本里有 ${heads} 个大分镜，却只切出 ${parts.length} 条`);
         return;
       }
       boardGenLast = parts;
-      setGenState(`收到 ${parts.length} 条分镜，已自动填入（可撤销）`);
+      setGenState(`收到 ${parts.length} 条分镜（按${mode === 'token' ? `「${BOARD_SPLIT}」` : '「大分镜N」标题'}切），已自动填入（可撤销）`);
       applyStoryboard(parts, 'replace');       // 自动落条目，不再等你勾选
     } else if (d.state === 'failed') {
       boardGen.busy = false;
@@ -2735,6 +2739,13 @@ function onDeliverEvent(d) {
 /* ---------- 用文本 AI（DeepSeek）生成分镜：投剧情 + skill → 取回 → 按 ### 切条 → 预览挑 ---------- */
 
 const BOARD_SPLIT = '###';      // 固定分隔符（用户定的：让 AI 每段以 ### 开头）
+/**
+ * 兜底判据：预设要求每个大分镜的第一行都是「大分镜N｜小标题」。
+ * ⚠️ 为什么需要兜底：`###` 是 Markdown 标记，**网页会把它渲染成标题**，
+ * 于是从 DOM 抓回来的文本里三个 # 就没了 —— 只认 ### 的话整篇会被塞成一条
+ * （真实踩过：3 个分镜并成 1 条，且一声不响）。
+ */
+const SB_HEAD_RE = /^[ \t]*大分镜[ \t]*\d/;
 
 /**
  * 生成分镜的**默认预设指令**。用户可以在工作台点「⚙ 预设」改掉，改完记住。
@@ -2766,8 +2777,7 @@ const DEFAULT_ASK_TEMPLATE = [
   '  不要写成「单镜头 one-shot 无剪辑」——那不符合要求。',
   '',
   '【每个大分镜照这个结构写】（下面只是格式示例，小分镜数量按内容来）',
-  '{{split}}',
-  '大分镜N｜小标题（{{seconds}} 秒）',
+  '{{split}}大分镜N｜小标题（{{seconds}} 秒）',
   '【这一大分镜讲什么】一句话',
   '【人物与场景】前后保持一致，不要漂移',
   '【环境光线】',
@@ -2779,7 +2789,9 @@ const DEFAULT_ASK_TEMPLATE = [
   '',
   '【输出格式】',
   '- 只输出分镜内容本身：不要解释、不要总结、不要开场白和结束语。',
-  '- 每个大分镜以 {{split}} 单独一行开头，后面跟这一个大分镜的内容。',
+  '- 每个大分镜都以 {{split}} 开头、单独占一行，格式严格照抄这一行：{{split}}大分镜N｜小标题',
+  '  ⚠️ {{split}} 和后面的字之间**不要加空格** —— 加了空格网页会把它当标题渲染掉，标记就丢了。',
+  '- 第一行必须是「大分镜1｜小标题」，每个大分镜都从这一行重新开始。',
   '- 本要求与参考资料冲突时，以本要求为准。',
 ].join('\n');
 
@@ -2820,13 +2832,29 @@ function openAskTemplateEditor() {
   };
 }
 
-/** 把 AI 的回复按 ### 切成一条条 */
-function splitStoryboard(text) {
+/** 切分边界：优先 ###，其次「大分镜N」标题行（内容兜底，见 SB_HEAD_RE） */
+function sbBoundary(text) {
   const token = BOARD_SPLIT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return String(text || '')
-    .split(new RegExp(`^\\s*${token}\\s*`, 'm'))
-    .map((s) => s.trim())
-    .filter((s) => s.length > 1);
+  const tokRe = new RegExp(`^[ \\t]*${token}[ \\t]*`, 'm');
+  if (tokRe.test(String(text || ''))) return { re: tokRe, mode: 'token' };
+  return { re: /^[ \t]*(?=大分镜[ \t]*\d)/m, mode: 'head' };
+}
+
+/** 文本里有几个"大分镜"段 —— 用来判断"该切开却没切开"。
+ *  主判据是「大分镜N｜」标题行；模型连标题都没写时，退一步数【小分镜】的段数。 */
+function countBigShots(text) {
+  const lines = String(text || '').split('\n');
+  const heads = lines.filter((l) => SB_HEAD_RE.test(l)).length;
+  if (heads) return heads;
+  return lines.filter((l) => /^[ \t]*【小分镜】/.test(l)).length;
+}
+
+/** 把 AI 的回复切成一条条。返回 `{parts, mode}`：mode 说明这次按什么切的 */
+function splitStoryboard(text) {
+  const s = String(text || '');
+  const { re, mode } = sbBoundary(s);
+  const parts = s.split(re).map((x) => x.trim()).filter((x) => x.length > 1);
+  return { parts, mode: parts.length > 1 ? mode : 'none' };
 }
 
 function setGenState(t) {
@@ -2890,11 +2918,12 @@ async function generateStoryboard() {
   }
 }
 
-/** 去掉第一个 ### 之前的杂质（思考过程有时和回答在同一段文本里） */
+/** 去掉第一个边界之前的杂质（思考过程有时和回答在同一段文本里） */
 function trimBeforeFirstToken(text) {
   const s = String(text || '');
-  const i = s.indexOf(BOARD_SPLIT);
-  return i > 0 ? s.slice(i) : s;
+  const { re } = sbBoundary(s);
+  const m = re.exec(s);
+  return m && m.index > 0 ? s.slice(m.index) : s;
 }
 
 /** 切不出分镜时，把取回的原文摊出来看 —— 比翻日志快，也不用猜 */
@@ -2903,7 +2932,8 @@ function showRawReply(raw, why) {
   showModal(`
     <h3>⚠️ ${esc(why)}</h3>
     <div class="modal-sub">
-      取回 ${txt.length} 字，但里面没有 <code>${esc(BOARD_SPLIT)}</code>。
+      取回 ${txt.length} 字，但里面既没有 <code>${esc(BOARD_SPLIT)}</code>，
+      也没有「大分镜N｜」这样的标题行。
       多半是取到了 AI 的「思考过程」而不是正式回答；也可能是模型没按格式输出。
     </div>
     <pre class="skill-preview">${esc(txt.slice(0, 3000))}${txt.length > 3000 ? '\n\n……（已截断）' : ''}</pre>
