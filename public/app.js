@@ -38,6 +38,7 @@ const S = {
   searchResults: null,
   vgroups: [],        // 当前根目录的虚拟分类 [{ id, name, files:[文件名] }]
   looseCount: 0,      // 未被任何虚拟分类引用的散文件数
+  boardRef: null,     // 工作台「引用目标」条目 id —— 点上面的图就进这条；只在内存里，不存盘
   // 分页（服务端分页，前端滚动加载）
   pageOffset: 0,
   pageLimit: TUNING.pageLimit,
@@ -2602,6 +2603,39 @@ function assignBoardImages(paths, itemId) {
     : `没加进去${extra || '（都不是能配图的文件）'}`, added ? 'ok' : 'warn');
 }
 
+/** 当前引用目标是第几条（-1 = 还没设，或目标那条已经被删了） */
+function boardRefIndex() {
+  return boardData().items.findIndex((x) => x.id === S.boardRef);
+}
+
+/**
+ * 「引用」——点**上面**条目已经配好的缩略图，把这张图的引用加进**下面**的目标条目，
+ * 不用再拖一遍；点几张就按点击顺序排几张。
+ *
+ * 目标是谁：优先用你点过的那条（S.boardRef）；没点过就延续拖拽的老规矩 —— 第一条还没配图的；
+ * 全配满了就新开一条。目标一旦用上就定住，接着点都进同一条。
+ */
+function refBoardImage(im) {
+  const d = boardData();
+  let idx = boardRefIndex();
+  if (idx < 0) idx = d.items.findIndex((x) => !(x.images || []).length);
+  if (idx < 0) { d.items.push(newBoardItem()); idx = d.items.length - 1; }
+
+  const it = d.items[idx];
+  it.images = it.images || [];
+  if (it.images.some((x) => x.root === im.root && x.path === im.path)) {
+    return toast(`第 ${idx + 1} 条已经有这张了`, 'warn');
+  }
+  if (it.images.length >= BOARD_IMAGES_MAX) {
+    return toast(`第 ${idx + 1} 条已经配满 ${BOARD_IMAGES_MAX} 张`, 'warn');
+  }
+  it.images.push({ root: im.root, path: im.path });   // 追加 = 按点击顺序排
+  S.boardRef = it.id;                                 // 定住目标，接着点还进这条
+  renderBoard();
+  saveBoard(true);
+  toast(`已引用到第 ${idx + 1} 条（这条共 ${it.images.length} 张）`, 'ok');
+}
+
 function renderBoardItems() {
   const box = boardEl.querySelector('#pbItems');
   const d = boardData();
@@ -2610,22 +2644,25 @@ function renderBoardItems() {
     box.innerHTML = '<div class="pb-dim">还没有条目 —— 点「＋ 加一条」，或直接从素材管理器拖图片进来</div>';
     return;
   }
+  const rIdx = boardRefIndex();        // 引用目标是第几条（-1 = 还没设）
+  const refHint = rIdx >= 0 ? `点一下引用到第 ${rIdx + 1} 条` : '点一下引用到「还没配图的第一条」';
   d.items.forEach((it, i) => {
     const list = it.images || [];
+    const isRef = it.id === S.boardRef;
     const imgs = list.map((im, k) => `
-      <div class="pb-thumb" title="${esc(baseName(im.path))}">
+      <div class="pb-thumb" data-k="${k}" title="${esc(baseName(im.path))} —— ${refHint}">
         <img src="${esc(fileUrl(im.root, im.path))}" alt="" loading="lazy">
         <button class="pb-thumb-x" data-k="${k}" title="移除这张">×</button>
       </div>`).join('');
     const row = document.createElement('div');
-    row.className = 'pb-item';
+    row.className = isRef ? 'pb-item ref' : 'pb-item';
     row.dataset.id = it.id;
     row.innerHTML = `
       <div class="pb-idx">${i + 1}</div>
       <div class="pb-prompt">
         <textarea spellcheck="false" placeholder="这一条的提示词…">${esc(it.prompt)}</textarea>
-        <div class="pb-imgs">${imgs}<div class="pb-thumb add">拖图<br>进来</div></div>
-        <div class="pb-meta">${list.length ? `配了 ${list.length} 张图` : '还没配图'}${it.state ? ' · ' + esc(it.state) : ''}</div>
+        <div class="pb-imgs">${imgs}<div class="pb-thumb add" title="${isRef ? '再点一下取消引用目标' : '点一下把这条设成引用目标（之后点上面条目的图就会加进这条）'}">拖图<br>进来</div></div>
+        <div class="pb-meta">${list.length ? `配了 ${list.length} 张图` : '还没配图'}${it.state ? ' · ' + esc(it.state) : ''}${isRef ? ' · 🎯 引用目标' : ''}</div>
       </div>
       <div class="pb-ops">
         <button class="pb-op go" data-op="deliver" title="投放这一条（图一张张投，再投提示词）">📤</button>
@@ -2639,10 +2676,21 @@ function renderBoardItems() {
     ta.oninput = () => { it.prompt = ta.value; saveBoard(); };   // 只存盘，不重渲染（不然焦点会丢）
     row.querySelectorAll('.pb-thumb-x').forEach((b) => {
       b.onclick = (ev) => {
-        ev.stopPropagation();
+        ev.stopPropagation();          // 别让它冒泡到缩略图的「引用」上
         it.images.splice(Number(b.dataset.k), 1);
         renderBoard(); saveBoard(true);
       };
+    });
+    // 点「拖图进来」那个框 = 把这条设成引用目标（再点一下取消）
+    row.querySelector('.pb-thumb.add').onclick = () => {
+      S.boardRef = isRef ? null : it.id;
+      renderBoard();
+      toast(isRef ? '已取消引用目标'
+        : `第 ${i + 1} 条设成引用目标 —— 现在点上面条目的图，就会加进这条`, 'ok');
+    };
+    // 点已经配好的缩略图 = 把这张图引用进目标条目
+    row.querySelectorAll('.pb-thumb[data-k]').forEach((t) => {
+      t.onclick = () => refBoardImage(it.images[Number(t.dataset.k)]);
     });
     row.querySelectorAll('.pb-op').forEach((b) => {
       b.onclick = () => {
@@ -2687,9 +2735,11 @@ function updateBoardSub() {
   updateSkillClearBtn();          // 按钮状态跟着 skills 变
   const sub = boardEl.querySelector('#pbSub');
   if (!sub) return;
+  const rIdx = boardRefIndex();
   sub.textContent = `${d.items.length} 条 · ${d.seconds}s`
     + ` · 配图 ${boardImageCount()} 张`
-    + (d.skills.length ? ` · skill ${d.skills.length}` : '');
+    + (d.skills.length ? ` · skill ${d.skills.length}` : '')
+    + (rIdx >= 0 ? ` · 🎯 引用到第 ${rIdx + 1} 条` : '');
 }
 
 function renderBoard() {
