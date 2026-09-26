@@ -27,3 +27,6 @@ _dist/
 _*.js
 _*.bat
 _*.cmd
+
+# 一键上传的 PowerShell 脚本（本地用，不入库）
+oneshot.ps1
