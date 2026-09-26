@@ -201,28 +201,36 @@ for (const f of ['data.db', 'debug.log', 'launcher.json', 'clipboard.log']) {
   }
 }
 
-// 待提交的大文件（GitHub 单文件上限 100MB，超了直接拒收）
+// 待提交文件体检：大文件 + 临时脚本（下划线开头的最容易忘删）
 try {
   const { spawnSync } = require('child_process');
   const r = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8' });
   if (r.status !== 0 || r.stdout == null) throw new Error('读不到 git 状态');
-  const big = [];
-  for (const line of r.stdout.split('\n')) {
-    const p = line.slice(3).trim().replace(/^"|"$/g, '');
-    if (!p || !fs.existsSync(p)) continue;
+  const files = r.stdout.split('\n')
+    .map((l) => l.slice(3).trim().replace(/^"|"$/g, ''))
+    .filter(Boolean);
+  const big = [], tempish = [];
+  for (const p of files) {
+    if (/(^|\/)_[^/]*\.(js|bat|cmd|txt|json|log)$/i.test(p) || /(^|\/)_e2e\//.test(p)) tempish.push(p);
+    if (!fs.existsSync(p)) continue;
     let st = null;
     try { st = fs.statSync(p); } catch { continue; }
-    if (!st.isFile()) continue;
-    const mb = st.size / 1048576;
-    if (mb > 5) big.push(`${p}  ${mb.toFixed(1)} MB`);
+    if (st.isFile() && st.size / 1048576 > 5) big.push(`${p}  ${(st.size / 1048576).toFixed(1)} MB`);
+  }
+  if (tempish.length) {
+    console.log('  ⚠️ 待提交里有临时文件（下划线开头 —— 验证脚本、试跑产物之类）：');
+    for (const t of tempish) console.log('    ' + t);
+    console.log('    不要的话删掉它；验证脚本本来就该写到 .git/_xxx.js（git 内部，永远不会被提交）。');
+    sideWarn++;
   }
   if (big.length) {
     console.log('  ⚠️ 待提交的大文件（GitHub 单文件上限 100MB，超了会被拒收）：');
     for (const b of big) console.log('    ' + b);
     sideWarn++;
-  } else console.log('  ✅ 没有超过 5MB 的大文件。');
+  }
+  if (!tempish.length && !big.length) console.log('  ✅ 待提交文件里没有临时脚本，也没有超过 5MB 的大文件。');
 } catch (e) {
-  console.log(`  （大文件检查跳过：${e.message}）`);
+  console.log(`  （待提交文件检查跳过：${e.message}）`);
 }
 console.log('（data.db / debug.log / launcher.json 都在 .gitignore 里就安全）');
 
