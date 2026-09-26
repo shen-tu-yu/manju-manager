@@ -1044,6 +1044,35 @@ function normBoardImages(it) {
   return out;
 }
 
+// ---------------------------------------------------------------- 投放通道（命令队列）
+//
+// 网页和 AI 站点之间没有长连接可用，所以走"命令队列 + 脚本轮询"：
+//   网页入队 → 助手脚本每 1.2 秒来取一条 → 执行（投图/投提示词/点发送）→ 回执 → SSE 推回网页。
+// 任务只在内存里（投放是即时动作），进程重启就没了，不做持久化。
+//
+// 两种命令：
+//   deliver —— 把这条的多张图**一张一张**（间隔 0.5s）投进输入框，再投提示词
+//   send    —— 点目标站的发送按钮（**找不到按钮就失败，绝不猜坐标瞎点**）
+
+const deliverTasks = new Map();
+const DELIVER_KEEP = 100;                      // 内存里最多留多少条历史
+const DELIVER_TIMEOUT_MS = 90 * 1000;          // 脚本领取后超时未回执 → 退回待执行
+
+function queueDeliver(kind, payload) {
+  const id = 'dl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const t = Object.assign({ id, kind, state: 'pending', createdAt: Date.now(), message: '' }, payload);
+  deliverTasks.set(id, t);
+  if (deliverTasks.size > DELIVER_KEEP) {
+    const oldest = Array.from(deliverTasks.values())
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(0, deliverTasks.size - DELIVER_KEEP);
+    for (const o of oldest) if (o.state === 'done' || o.state === 'failed') deliverTasks.delete(o.id);
+  }
+  LOG(`[投放] 入队 ${id}（${kind}${t.itemId ? ' · ' + t.itemId : ''}）`);
+  sseSend('deliver', { id, kind, itemId: t.itemId || '', state: 'pending', message: '' });
+  return t;
+}
+
 // ---------------------------------------------------------------- 路由
 
 const server = http.createServer(async (req, res) => {
@@ -1288,6 +1317,78 @@ const server = http.createServer(async (req, res) => {
       };
       DB.setSettings({ promptBoard: data });
       return sendJSON(res, 200, { ok: true, saved: data.items.length });
+    }
+
+    // ============================ 投放通道（新文件到达的下一步） ============================
+
+    // 助手脚本轮询：取一条待执行的任务（取到即标记 running）
+    if (p === '/api/deliver/next' && req.method === 'GET') {
+      const site = String(q.get('site') || '');
+      const now = Date.now();
+      for (const t of deliverTasks.values()) {          // 超时回收：脚本崩了/页面关了，任务不能卡死
+        if (t.state === 'running' && now - (t.startedAt || 0) > DELIVER_TIMEOUT_MS) {
+          t.state = 'pending';
+          t.message = '上次执行超时，重来';
+          sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: 'pending', message: t.message });
+        }
+      }
+      const t = Array.from(deliverTasks.values())
+        .filter((x) => x.state === 'pending' && (!site || !x.site || x.site === site))
+        .sort((a, b) => a.createdAt - b.createdAt)[0];
+      if (!t) return sendJSON(res, 200, { task: null });
+      t.state = 'running';
+      t.startedAt = now;
+      LOG(`[投放] 脚本领取 ${t.id}（${t.kind}）`);
+      sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: 'running', message: '' });
+      return sendJSON(res, 200, {
+        task: { id: t.id, kind: t.kind, images: t.images || [], prompt: t.prompt || '' },
+      });
+    }
+
+    // 助手脚本回执
+    if (p === '/api/deliver/done' && req.method === 'POST') {
+      const b = await body();
+      const t = deliverTasks.get(String(b.id || ''));
+      if (!t) return sendJSON(res, 200, { ok: true, gone: true });
+      t.state = b.ok ? 'done' : 'failed';
+      t.message = String(b.message || '');
+      t.finishedAt = Date.now();
+      LOG(`[投放] ${t.id} ${t.state}：${t.message}`);
+      sseSend('deliver', { id: t.id, kind: t.kind, itemId: t.itemId || '', state: t.state, message: t.message });
+      return sendJSON(res, 200, { ok: true });
+    }
+
+    // 网页入队：投放某一条（它的多张图 + 提示词）
+    if (p === '/api/deliver/queue' && req.method === 'POST') {
+      const b = await body();
+      const images = (Array.isArray(b.images) ? b.images : [])
+        .filter((x) => x && x.root && x.path)
+        .slice(0, BOARD_IMAGES_MAX)
+        .map((x) => ({ root: String(x.root), path: String(x.path) }));
+      const t = queueDeliver('deliver', {
+        itemId: String(b.itemId || ''),
+        site: String(b.site || 'doubao'),
+        images,
+        prompt: String(b.prompt || ''),
+      });
+      return sendJSON(res, 200, { ok: true, id: t.id, images: images.length });
+    }
+
+    // 网页入队：让脚本去点目标站的发送按钮
+    if (p === '/api/deliver/send' && req.method === 'POST') {
+      const b = await body();
+      const t = queueDeliver('send', { itemId: String(b.itemId || ''), site: String(b.site || 'doubao') });
+      return sendJSON(res, 200, { ok: true, id: t.id });
+    }
+
+    // 网页查任务状态（刷新页面后恢复显示用）
+    if (p === '/api/deliver/state' && req.method === 'GET') {
+      return sendJSON(res, 200, {
+        tasks: Array.from(deliverTasks.values())
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .map((t) => ({ id: t.id, kind: t.kind, itemId: t.itemId || '', state: t.state, message: t.message || '', at: t.createdAt }))
+          .slice(-50),
+      });
     }
 
     // 读一份模板（预览用；以后投放给 AI 也用这个接口取内容）

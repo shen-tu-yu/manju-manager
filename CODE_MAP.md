@@ -44,6 +44,7 @@
 | 配置 / 根目录 | `GET·POST /api/config`、`POST /api/roots`、`DELETE /api/roots/:id` |
 | **技能目录** | `GET·POST /api/skills`、`DELETE /api/skills/:id`、`GET /api/skills/file` |
 | **提示词工作台** | `GET·POST /api/board` |
+| **投放通道** | `GET /api/deliver/next`（脚本轮询领取）、`POST /api/deliver/done`（脚本回执）、`POST /api/deliver/queue`、`POST /api/deliver/send`、`GET /api/deliver/state` |
 | **收件箱** | `GET /api/edge`、`GET /api/events`(SSE)、`GET /api/inbox`、`GET /api/inbox/targets`、`POST /api/inbox/ingest` |
 | 磁盘浏览 / 目录 | `GET /api/fs/drives`、`GET /api/fs/dirs`、`GET /api/list`、`GET /api/tree` |
 | 文件读写 | `GET /api/file`、`GET·POST /api/text`、`PUT /api/upload`、`POST /api/mkdir`、`/api/mkdir-template`、`/api/rename`、`/api/rename-batch`、`/api/move`、`/api/copy`、`POST /api/delete` |
@@ -281,7 +282,17 @@
 - skill 勾选树复用 `buildSkillTree()` / `skillByName`（和左侧「技能」分区同一套层级规则，
   仍然**不许平铺**）
 - 存盘：`saveBoard()` 防抖 600ms；结构变化（增删/移动/配图）用 `saveBoard(true)` 立刻存
-- ⏳ 下一步（切片 3）：投放通道 —— 命令队列 + 助手脚本轮询 + 逐条投图/投提示词 + 点发送 + 回执
+
+### 3.11 投放通道（工作台 → 助手脚本 → 豆包）
+
+- 后端：`queueDeliver()` 入队（内存 `deliverTasks`，**不持久化** —— 投放是即时动作），
+  两种命令 `deliver` / `send`；状态 `pending → running → done/failed`，每步都 `sseSend('deliver', …)`
+- 脚本侧（`doubao-helper.user.js`）：`startDeliverLoop()` 每 1.2 秒 `GET /api/deliver/next?site=<id>`，
+  取到就 `runTask()` 执行，完事 `POST /api/deliver/done` 回执（`boot()` 里启动，只在 `IS_TARGET` 时）
+- 前端：`deliverItem()` / `sendItem()` 入队；`onDeliverEvent()`（SSE `deliver` 事件）更新条目状态。
+  ⚠️ 收到回执要重渲染时**先看焦点在不在条目里**（`document.activeElement.closest('.pb-item')`）——
+  用户正在打字就别重建 DOM，否则输入被打断
+- 「发送」按钮只在状态含「待发送 / 已投放」时出现（`/待发送|已投放/.test(item.state)`）
 
 ---
 
@@ -378,6 +389,20 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
 - 篡改猴：重新走一遍「复制脚本代码 → 编辑 → `Ctrl+A` 覆盖粘贴 → `Ctrl+S`」
 - Edge 扩展：`edge://extensions/` → **重新加载**
 - 然后**刷新目标站点页面**（脚本只在页面加载时注入一次）
+
+### ⑩ 投放通道：网页 ↔ AI 站点之间只能"命令队列 + 脚本轮询"
+
+第三方站点没有我们的长连接，篡改猴的 `GM_xmlhttpRequest` 也不支持流式，所以只能：
+**网页入队 → 脚本每 1.2 秒 `GET /api/deliver/next` 领一条 → 执行 → `POST /api/deliver/done` 回执
+→ 后端 `sseSend('deliver', …)` 推回网页**。四条规矩：
+
+1. **领到即锁定**（`/api/deliver/next` 取到就把状态改成 `running`），否则两个标签页会重复投同一条
+2. **超时回收**（`DELIVER_TIMEOUT_MS = 90s`）：脚本崩了 / 页面关了，任务自动退回 `pending`，
+   不会永远卡在"正在投图…"
+3. **找不到发送按钮就报失败**，绝不按坐标瞎点 —— 点到"清空 / 上传"是灾难
+   （`findSendButton()` 打分低于 5 分直接返回 null）
+4. **多图必须一张一张投**（`await sleep(500)`）：目标页面是异步渲染，一口气塞进去顺序会乱 ——
+   这正是用户要的"0.5 秒一张，确保人和图不串"
 
 ---
 

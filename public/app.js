@@ -1859,6 +1859,10 @@ function connectInbox() {
     es.addEventListener('inbox', (ev) => {
       try { enqueueInbox(JSON.parse(ev.data)); } catch { /* 数据坏了就当没收到 */ }
     });
+    // 投放通道的回执（脚本执行完推回来）
+    es.addEventListener('deliver', (ev) => {
+      try { onDeliverEvent(JSON.parse(ev.data)); } catch { /* 同上 */ }
+    });
     // 断线不用手动重连：EventSource 自己会重试
   } catch { /* 浏览器不支持就算了 */ }
 }
@@ -2479,6 +2483,8 @@ function renderBoardItems() {
         <div class="pb-meta">${list.length ? `配了 ${list.length} 张图` : '还没配图'}${it.state ? ' · ' + esc(it.state) : ''}</div>
       </div>
       <div class="pb-ops">
+        <button class="pb-op go" data-op="deliver" title="投放这一条（图一张张投，再投提示词）">📤</button>
+        ${/待发送|已投放/.test(it.state || '') ? '<button class="pb-op go wide" data-op="send" title="让豆包发送">发送</button>' : ''}
         <button class="pb-op" data-op="up" title="上移">↑</button>
         <button class="pb-op" data-op="down" title="下移">↓</button>
         <button class="pb-op" data-op="img" title="去掉这一条的所有配图">🖼</button>
@@ -2498,6 +2504,8 @@ function renderBoardItems() {
         const arr = d.items;
         const k = arr.indexOf(it);
         const op = b.dataset.op;
+        if (op === 'deliver') return deliverItem(it);
+        if (op === 'send') return sendItem(it);
         if (op === 'del') arr.splice(k, 1);
         else if (op === 'up' && k > 0) { arr.splice(k, 1); arr.splice(k - 1, 0, it); }
         else if (op === 'down' && k < arr.length - 1) { arr.splice(k, 1); arr.splice(k + 1, 0, it); }
@@ -2592,6 +2600,64 @@ function renderSkillPick(parent, node, depth, dir, chosen) {
     };
     parent.appendChild(row);
   }
+}
+
+/* ===================== 投放通道（网页入队 → 助手脚本执行） =====================
+ * 网页和 AI 站点之间没有长连接，所以走"命令队列 + 脚本轮询"：
+ *   这里入队 → 豆包页面上的助手脚本每 1.2 秒取一条 → 一张张投图 + 投提示词 → 回执 → SSE 推回来。
+ */
+
+/** 投放这一条：图 + 提示词入队 */
+async function deliverItem(it) {
+  if (!it.images || !it.images.length) return toast('这条还没配图', 'warn');
+  if (!it.prompt || !it.prompt.trim()) return toast('这条还没有提示词', 'warn');
+  try {
+    it.state = '排队中…';
+    renderBoardItems(); saveBoard();
+    const r = await apiPost('/api/deliver/queue', {
+      itemId: it.id, site: 'doubao', images: it.images, prompt: it.prompt,
+    });
+    toast(`已入队：${r.images} 张图 + 提示词 —— 助手脚本会一张张投进豆包`, 'ok', 4200);
+    // 几秒后还没被领取，多半是豆包页面没开 / 脚本没启用
+    setTimeout(() => {
+      if (it.state === '排队中…') {
+        toast('还没有助手脚本领取这条 —— 确认豆包页面开着、「📁 素材」面板已加载', 'warn', 7000);
+      }
+    }, 4500);
+  } catch (e) {
+    it.state = '❌ ' + e.message;
+    renderBoardItems(); saveBoard();
+  }
+}
+
+/** 让助手脚本去点豆包的发送按钮 */
+async function sendItem(it) {
+  try {
+    it.state = '正在发送…';
+    renderBoardItems(); saveBoard();
+    await apiPost('/api/deliver/send', { itemId: it.id, site: 'doubao' });
+  } catch (e) {
+    it.state = '❌ ' + e.message;
+    renderBoardItems(); saveBoard();
+  }
+}
+
+/** 助手脚本的回执（走 SSE）→ 更新对应条目的状态 */
+function onDeliverEvent(d) {
+  if (!d || !d.id) return;
+  const it = boardData().items.find((x) => x.id === d.itemId);
+  if (it) {
+    if (d.state === 'pending') it.state = '排队中…';
+    else if (d.state === 'running') it.state = d.kind === 'send' ? '正在发送…' : '正在投图…';
+    else if (d.state === 'done') it.state = d.kind === 'send' ? '✅ 已发送' : '✅ 已投放，待发送';
+    else if (d.state === 'failed') it.state = '❌ ' + (d.message || '失败');
+    saveBoard();
+  }
+  // 别打断正在打字的人：焦点在条目里就先不重渲染
+  const editing = document.activeElement && document.activeElement.closest
+    && document.activeElement.closest('.pb-item');
+  if (boardEl && boardData().open && !editing) renderBoardItems();
+  if (d.state === 'failed' && d.message) toast('投放失败：' + d.message, 'err', 6000);
 }
 
 /* ===================== 模态框 ===================== */

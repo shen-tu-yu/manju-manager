@@ -173,6 +173,136 @@
     return { ok: sent > 0, sent };
   }
 
+  /* ================= 投放通道（网页点一下 → 这里执行） =================
+   * 网页把任务放进本地服务的队列，这里每 1.2 秒取一条：
+   *   deliver —— 这条的图**一张一张**投进输入框（间隔 0.5 秒，确保人和图不串），再投提示词
+   *   send    —— 点目标站的发送按钮（**找不到按钮就报失败，绝不猜坐标瞎点**）
+   */
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const pathName = (p) => String(p || '').split('/').pop();
+
+  function postJSON(url, data) {
+    const body = JSON.stringify(data || {});
+    if (typeof GM_xmlhttpRequest === 'function') {
+      return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+          method: 'POST', url, data: body,
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000,
+          onload: (res) => {
+            if (res.status !== 200) return reject(new Error('HTTP ' + res.status));
+            try { resolve(JSON.parse(res.responseText)); } catch { resolve({}); }
+          },
+          onerror: () => reject(new Error('连不上素材服务')),
+          ontimeout: () => reject(new Error('请求超时')),
+        });
+      });
+    }
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))));
+  }
+
+  /** 把提示词写进输入框（textarea 和 contenteditable 两种都试） */
+  function injectText(text) {
+    const s = String(text || '');
+    if (!s) return false;
+    const box = document.querySelector('[contenteditable="true"]') || document.querySelector('textarea');
+    if (!box) return false;
+    try { box.focus(); } catch { /* 有的元素不能 focus */ }
+    if (box.tagName === 'TEXTAREA' || box.tagName === 'INPUT') {
+      const proto = box.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+      setter.call(box, s);
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+    const ok = document.execCommand && document.execCommand('insertText', false, s);
+    if (!ok) {
+      box.textContent = s;
+      box.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    }
+    return true;
+  }
+
+  /** 找发送按钮：按 aria-label / data-testid / 文本 打分；**找不到返回 null**（不瞎点） */
+  function findSendButton() {
+    const list = Array.from(document.querySelectorAll('button, [role="button"], [data-testid*="send"]'));
+    let best = null, bestScore = 0;
+    for (const el of list) {
+      const txt = [
+        el.getAttribute('aria-label') || '',
+        el.getAttribute('data-testid') || '',
+        el.getAttribute('title') || '',
+        el.textContent || '',
+      ].join(' ');
+      let s = 0;
+      if (/(^|\s)(send|发送|生成)(\s|$)/i.test(txt)) s += 6;
+      else if (/send|发送|生成/i.test(txt)) s += 3;
+      if ((el.getAttribute('type') || '').toLowerCase() === 'submit') s += 2;
+      if (el.disabled) s -= 6;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) s -= 6;          // 不可见的不算
+      if (s > bestScore) { bestScore = s; best = el; }
+    }
+    return bestScore >= 5 ? best : null;
+  }
+
+  async function reportTask(id, ok, message) {
+    try { await postJSON(FM + '/api/deliver/done', { id, ok, message }); }
+    catch (e) { log('回执失败', e.message); }
+  }
+
+  async function runTask(task) {
+    log('收到任务', task.id, task.kind);
+    let ok = false, msg = '';
+    try {
+      if (task.kind === 'send') {
+        const btn = findSendButton();
+        if (!btn) msg = '没找到发送按钮，没敢乱点 —— 请手动点一下';
+        else { btn.click(); ok = true; msg = '已点发送'; }
+      } else {
+        const imgs = Array.isArray(task.images) ? task.images : [];
+        let sent = 0;
+        for (const im of imgs) {
+          const blob = await getBlob(`${FM}/api/file?root=${encodeURIComponent(im.root)}&path=${encodeURIComponent(im.path)}`);
+          const file = new File([blob], pathName(im.path) || ('image' + (sent + 1) + '.png'),
+            { type: blob.type || 'image/png' });
+          const input = findInputs().find((i) => acceptOk(i, file)) || findInputs()[0];
+          if (!input) throw new Error('这个页面没有 input[type=file]，投不进去');
+          if (!injectToInput(input, [file])) throw new Error('注入图片失败');
+          sent++;
+          await sleep(500);                        // ← 一张一张来，中间隔 0.5 秒，确保顺序不乱
+        }
+        if (task.prompt) injectText(task.prompt);
+        ok = sent > 0 || !!task.prompt;
+        msg = `已投 ${sent} 张图${task.prompt ? ' + 提示词' : ''}，等你点「发送」`;
+      }
+    } catch (e) {
+      msg = e.message || String(e);
+    }
+    state.diag = `任务 ${task.kind}：${msg}`;
+    renderDiag();
+    toast(msg, ok);
+    await reportTask(task.id, ok, msg);
+  }
+
+  let deliverTimer = null;
+
+  /** 轮询本地服务取任务（setTimeout 链，不会请求堆积） */
+  function startDeliverLoop() {
+    if (deliverTimer || !IS_TARGET) return;
+    const tick = async () => {
+      try {
+        const r = await getJSON(`${FM}/api/deliver/next?site=${encodeURIComponent(SITE.id)}`);
+        if (r && r.task) await runTask(r.task);
+      } catch { /* 服务没开 / 断网：下一轮再试，不刷日志 */ }
+      deliverTimer = setTimeout(tick, 1200);
+    };
+    deliverTimer = setTimeout(tick, 1500);
+  }
+
   /* ================= 素材库 ================= */
 
   const fileURL = (e) => `${FM}/api/file?root=${encodeURIComponent(state.rootId)}`
@@ -614,6 +744,7 @@
       return;
     }
     build();
+    startDeliverLoop();
     log('已注入，当前页面已有', findInputs().length, '个 input[type=file]');
   }
 
