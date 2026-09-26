@@ -2688,8 +2688,12 @@ function onDeliverEvent(d) {
     if (d.state === 'done') {
       setGenState('DeepSeek 正在生成分镜…');
       setTimeout(() => {
-        apiPost('/api/deliver/queue', { kind: 'read', site: 'deepseek' })
-          .catch((e) => { boardGen.busy = false; setGenState('取回失败：' + e.message); });
+        // expect：告诉脚本"什么才算正式回答"（认分隔符，或每个大分镜的标题行）。
+        // 脚本用它挡"只等到思考链"的情况 —— 判据由前端给，脚本不硬编码预设格式。
+        apiPost('/api/deliver/queue', {
+          kind: 'read', site: 'deepseek',
+          expect: { split: BOARD_SPLIT, head: SB_HEAD },
+        }).catch((e) => { boardGen.busy = false; setGenState('取回失败：' + e.message); });
       }, 2500);
     } else if (d.state === 'failed') {
       boardGen.busy = false;
@@ -2745,7 +2749,8 @@ const BOARD_SPLIT = '###';      // 固定分隔符（用户定的：让 AI 每�
  * 于是从 DOM 抓回来的文本里三个 # 就没了 —— 只认 ### 的话整篇会被塞成一条
  * （真实踩过：3 个分镜并成 1 条，且一声不响）。
  */
-const SB_HEAD_RE = /^[ \t]*大分镜[ \t]*\d/;
+const SB_HEAD = '大分镜';       // 每个大分镜标题行的开头（**脚本侧判"是不是正式回答"也用它**）
+const SB_HEAD_RE = new RegExp(`^[ \\t]*${SB_HEAD}[ \\t]*\\d`);
 
 /**
  * 生成分镜的**默认预设指令**。用户可以在工作台点「⚙ 预设」改掉，改完记住。
@@ -2837,7 +2842,7 @@ function sbBoundary(text) {
   const token = BOARD_SPLIT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const tokRe = new RegExp(`^[ \\t]*${token}[ \\t]*`, 'm');
   if (tokRe.test(String(text || ''))) return { re: tokRe, mode: 'token' };
-  return { re: /^[ \t]*(?=大分镜[ \t]*\d)/m, mode: 'head' };
+  return { re: new RegExp(`^[ \\t]*(?=${SB_HEAD}[ \\t]*\\d)`, 'm'), mode: 'head' };
 }
 
 /** 文本里有几个"大分镜"段 —— 用来判断"该切开却没切开"。

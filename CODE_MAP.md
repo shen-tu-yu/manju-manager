@@ -189,7 +189,8 @@
 | `re` | 域名匹配（决定脚本在哪个站干活） |
 | `input` | 输入框选择器，**按优先级排列**（先精确后通用） |
 | `send` | 发送按钮选择器，**按优先级排列**（全找不到就统一退回"在输入框按 Enter"） |
-| `reply` | AI 回复容器（下一期"读复制按钮取回结果"用） |
+| `stop` | **"停止生成"按钮 = 页面对"正在生成"的唯一权威信号**（`genState()` 用它判 running/idle，见 3.12） |
+| `reply` | AI 回复容器（取回结果时用） |
 
 **加一个平台 = 四处**：`SITES` 加一项、UserScript `@match`、`extension/manifest.json` 的 `matches`、
 app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手菜单都从它渲染）。
@@ -198,8 +199,8 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
 
 | 平台 | 来源 | 关键选择器 |
 |---|---|---|
-| 豆包 | 用户从 DevTools 实测截图 | 输入框 `textarea.semi-input-textarea`；发送 `#flow-end-msg-send` / `[data-testid="chat_input_send_button"]` / `button[aria-label="发送"]` |
-| DeepSeek | ArcRift 的 `PLATFORM_SELECTORS.md`（2026-05 实测） | 输入框 `#chat-input`（就是个 `<textarea>`）；发送 `button[aria-label="Send message"]`；回复 `.ds-markdown` / `[data-message-author-role="assistant"]` |
+| 豆包 | 用户从 DevTools 实测截图 | 输入框 `textarea.semi-input-textarea`；发送 `#flow-end-msg-send` / `[data-testid="chat_input_send_button"]` / `button[aria-label="发送"]`；停止 `[data-testid="chat_input_stop_button"]`（未实测，靠通用兜底） |
+| DeepSeek | ArcRift 的 `PLATFORM_SELECTORS.md`（2026-05 实测） | 输入框 `#chat-input`（就是个 `<textarea>`）；发送 `button[aria-label="Send message"]`；回复 `.ds-markdown` / `[data-message-author-role="assistant"]`；停止 `button[aria-label="Stop generating"]`（**未在真机验证**，所以代码里只把它当"辅助判据"，见 3.12） |
 | Pavo | 无公开资料 | 只留通用兜底，靠失败诊断适配 |
 
 > 找选择器的套路：搜「<平台> playwright/selenium 自动化」→ 找 GitHub 上能跑的项目 →
@@ -355,13 +356,19 @@ app.js 的 `DELIVER_TARGETS`（工作台的「投放到」下拉和投放助手�
   `splitStoryboard()` 切条 → `applyStoryboard()` **自动落条目**（默认替换，留底可撤销）；
   想看/想改再点工作台的「查看」→ `openStoryboardReview()`（勾选 + 可改 + 替换/追加）
 - 脚本侧取回：`lastReplyEl()` 找**最后一条正式回答**的容器
-  （跳过 class 含 think/reason/cot 的容器），`lastReplyText()` 取它的文本并交给
-  `blockToMarkdown()` **还原 `###` 标记** —— ⚠️ 页面会把 `###` 渲染掉，直接取 `innerText`
-  是切不出分镜的（见踩坑⑩-9）；抓完再点一次「复制」按钮拿**原文**（`readByCopy()`，
-  猴子补丁 `clipboard.writeText`），拿不到才用 DOM 文本。
-  **切分认两种边界**（`sbBoundary`）：`###` 优先，其次「大分镜N｜」标题行；
-  两条路都没有就叫**失灵并弹原文**（`countBigShots` ≥2 却只切出 1 条 = 边界丢了，不落条目）。
-  等待用 `waitForReply(timeout, baseline)`：**只有内容与基线不同**才算这一轮的新回复（见踩坑⑩-10）
+  （`isThinkEl()` **往上爬 5 层**判 think/reason/cot/思考/推理 —— 只判一层不够），
+  `lastReplyText()` 取它的文本并交给 `blockToMarkdown()` **还原 `###` 标记**
+  —— ⚠️ 页面会把 `###` 渲染掉，直接取 `innerText` 是切不出分镜的（见踩坑⑩-9）；
+  抓完再点一次「复制」按钮拿**原文**（`readByCopy()`，猴子补丁 `clipboard.writeText`），
+  拿不到才用 DOM 文本。**切分认两种边界**（`sbBoundary`）：`###` 优先，其次「大分镜N｜」标题行；
+  两条路都没有就叫**失灵并弹原文**（`countBigShots` ≥2 却只切出 1 条 = 边界丢了，不落条目）
+- **"生成完了没有"绝不靠计时**（`waitForReply(timeout, baseline, expect)`，见踩坑⑩-11）：
+  ① `genState()` 看**停止按钮**：生成中（running）**绝不返回**；见过 running 后变 idle 就**立刻**返回
+  ② 文本连续 3 次不变（≈4.5 秒静默）只当**兜底**（页面信号读不出来时才用）
+  ③ `expect`：文本得像正式回答（有分隔符 / 有段落标题行），否则继续等、超时也**不交出去**
+  另有两件配套：**只有内容与基线不同**才算这一轮的新回复（`askBaseline`，见踩坑⑩-10）；
+  等待期间 `keepLastReplyVisible()` 每轮把最后一条回复**滚进视野**（防离屏不渲染，见踩坑⑩-11）
+  返回值是 `{text, why}`，`why` 记"凭什么认为写完了"，随回执进 debug.log
 - **切好的分镜自动落进条目**（`applyStoryboard`，默认替换），并在 `boardGenUndo` 留底：
   工作台上有「查看」（打开预览改完重填）和「撤销」（回到生成前的条目）两个按钮，
   这样既不用手工勾选、又不会一失手丢掉旧条目
@@ -529,6 +536,8 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
      所以要先给 `clipboard.writeText` 打猴子补丁截获；`copy` 事件只兜 `execCommand` 那条老路。
      ⚠️ 操作条常常**要悬停才渲染**，而且图标按钮**没有文字、只有 class 带 copy** ——
      所以找不到按钮时先 `hoverLastReply()` 再找一次，匹配时**把 className 也算进关键词**
+     ⚠️ **复制是异步的**：以前是"点一下、死等 600ms"，页面慢一点就空手而归 → 退回 DOM 文本、
+     `###` 全丢（真实踩过"分割失灵"）。现在是**轮询等结果**：拿到就返回，最多点 2 次
    - **② 补回标记**：`blockToMarkdown()` 把 `h1~h6` 的标题行前**补回 `###`**，下游照旧能切
    - **③ 内容兜底（第二次栽的修法）**：`splitStoryboard()` 认**两种**边界 ——
      优先 `###`，其次预设本来就要求的「**大分镜N｜**」标题行。
@@ -546,6 +555,24 @@ Select-String -Path public\app.js -Pattern "^  bind[A-Z]\w+\(\);$"
    "内容连续 N 次不变就算写完"会**立刻成立**（真实踩过：两次取回字数一模一样、第二次只花 6 秒）。
    修法：进 read 先拿**基线**（优先用 ask 发送前记下的 `askBaseline`），
    **只有内容与基线不同**才当成新回复开始计时
+11. **"文本 N 秒没变"不能证明生成结束 —— 别用计时猜** ——
+   **用户实测：只有思考链阶段界面在"动"，正式生成阶段界面不推。** 这句话同时打脸两头：
+   - "静默 = 写完"在**思考链尾部**极易成立（想完了、正式答案还没开始吐）→ 把推理过程当正式回答取走
+   - 正式内容在写的时候也可能长时间不动 → 判据两头都不靠谱
+   三层修法（都实现了）：
+   - **① 信页面的真信号**（`genState()`）：看**停止按钮**（`SITES[].stop`）。
+     生成中（running）**绝不返回**；见过 running 之后变 idle 就**立刻**返回（不再白等 4.5 秒）。
+     ⚠️ 停止按钮的选择器**没在真机验证过**，所以**只有"见过 running"才承认后面的 idle** ——
+     否则选择器一失效，`findSendButton` 蒙到一个常驻按钮就会让 genState 永远报 idle，
+     变成"一有内容就取"，比修之前更糟。没见过 running 就退回静默兜底（老行为）
+   - **② 判据由前端下发**：read 命令带 `expect={split,head}`（前端知道预设格式，脚本不该知道）。
+     `expectAllows()` 检查"有没有分隔符 / 有没有段落标题行"；不像正式回答就**继续等**，
+     超时也**返回空**（前端报错弹原文），绝不把思考过程填进条目
+   - **③ 替页面滚屏**（`keepLastReplyVisible()`）：正式阶段页面不推界面时，内容留在视野外，
+     渲染器可能**压根不渲染**它（虚拟化 / `content-visibility`）→ `innerText` 缺内容、
+     `querySelectorAll('h1..h6')` 找不到标题 → 取回半篇、或 `###` 补不回来
+   诊断（每次 read 都进 debug.log）：`等待判据 / 生成状态 + 停止按钮找到没 / 复制按钮 /
+   innerText vs textContent 长度差（差得多=有内容没渲染）/ 容器位置 / 标题标签 / 含不含 ###`
 8. **脚本绝不能在 iframe 里干活，但也绝不能在 UserScript 头加 `@noframes`** —— 两个方向都会坏：
    - **不禁 iframe 会坏**：豆包对话页里内嵌 `/drive-iframe/drive/home/`，篡改猴默认把脚本注入**所有 frame**，
      iframe 里那个实例一样轮询、一样抢任务，抢到就必然失败。诊断里 `路径 /drive-iframe/...`

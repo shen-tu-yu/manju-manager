@@ -1354,6 +1354,7 @@ const server = http.createServer(async (req, res) => {
           prompt: t.prompt || '',      // deliver 用
           text: t.text || '',          // ask 用（剧情 + 输出要求）
           files: t.files || [],        // ask 用（skill 附件）
+          expect: t.expect || null,    // read 用（什么才算"正式回答"），见 /api/deliver/queue
         },
       });
     }
@@ -1404,7 +1405,14 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (kind === 'read') {
-        const t = queueDeliver('read', { site });
+        // ⚠️ expect 是**前端下发的"什么才算正式回答"判据**（前端知道预设的格式：分隔符 + 段落标题）。
+        // 脚本拿它挡"只等到思考链"的情况 —— 判据的知识留在前端，脚本只做字符串检查。
+        const b2 = b.expect && typeof b.expect === 'object' ? b.expect : null;
+        const expect = b2 ? {
+          split: String(b2.split || '').slice(0, 40),
+          head: String(b2.head || '').slice(0, 40),
+        } : null;
+        const t = queueDeliver('read', { site, expect: (expect && (expect.split || expect.head)) ? expect : null });
         return sendJSON(res, 200, { ok: true, id: t.id });
       }
 

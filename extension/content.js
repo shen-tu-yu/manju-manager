@@ -14,7 +14,10 @@
    * 每一项的选择器都按**优先级排列**（先精确、后通用），因为第三方 DOM 会改版：
    *   input  —— 输入框
    *   send   —— 发送按钮（找不到时统一退回"在输入框按 Enter"，豆包就是这么发的）
-   *   reply  —— AI 回复容器（下一期"读复制按钮取回结果"要用）
+   *   stop   —— **"停止生成"按钮 = 页面对"正在生成"的唯一权威信号**（见 genState()）。
+   *             ⚠️ "等到文本 4.5 秒没变"是靠猜时间；停止按钮才是真信号。
+   *             生成中发送按钮会变成停止，所以 stop 找不到、send 找得到 = 已经生成完了。
+   *   reply  —— AI 回复容器（取回结果时用）
    *
    * 选择器来源写在 CODE_MAP 2.6：豆包是用户从 DevTools 实测给的；DeepSeek 来自 ArcRift 的
    * PLATFORM_SELECTORS.md（2026-05 实测）。查不到实测选择器的平台，就只留通用兜底 + 靠失败诊断。
@@ -24,6 +27,7 @@
       id: 'doubao', name: '豆包', re: /(^|\.)doubao\.com$/i,
       input: ['textarea.semi-input-textarea', '[contenteditable="true"]', 'textarea'],
       send: ['#flow-end-msg-send', '[data-testid="chat_input_send_button"]', 'button[aria-label="发送"]'],
+      stop: ['[data-testid="chat_input_stop_button"]', 'button[aria-label*="停止"]', 'button[aria-label*="Stop" i]'],
       reply: ['[data-message-author-role="assistant"]', '.ds-markdown', '[class*="message-content"]'],
     },
     {
@@ -32,6 +36,8 @@
       input: ['#chat-input', 'textarea[placeholder*="Send a message"]',
         'textarea[data-testid="chat-input"]', 'div[contenteditable][role="textbox"]', 'textarea'],
       send: ['button[aria-label="Send message"]', '[data-testid="send-button"]', 'button[type="submit"]'],
+      stop: ['button[aria-label="Stop generating"]', '[data-testid="stop-button"]',
+        'button[aria-label*="Stop" i]', 'button[aria-label*="停止"]'],
       reply: ['[data-message-author-role="assistant"]', '.ds-markdown',
         '[class*="AssistantMessage"]', '[class*="markdown-body"]'],
     },
@@ -302,6 +308,51 @@
     return bestScore >= 5 ? best : null;
   }
 
+  /**
+   * 「停止生成」按钮 —— **页面对"正在生成"的唯一权威信号**（别再靠猜时间）。
+   * 生成中发送位置会变成停止，所以：有 stop = 正在生成；没 stop 但有 send = 已经生成完了。
+   * 找不到返回 null（那就只能退回按时间猜，见 genState）。
+   */
+  function findStopButton() {
+    for (const sel of ((SITE && SITE.stop) || [])) {
+      let nodes = [];
+      try { nodes = document.querySelectorAll(sel); } catch { continue; }
+      for (const el of nodes) {
+        if (el.disabled) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return el;
+      }
+    }
+    // 通用兜底：可见、且属性/文字里写着 stop / 停止 的按钮（平台改版时还能救一下）
+    for (const el of document.querySelectorAll('button, [role="button"]')) {
+      const txt = [
+        el.getAttribute('aria-label') || '',
+        el.getAttribute('data-testid') || '',
+        el.getAttribute('title') || '',
+        typeof el.className === 'string' ? el.className : '',
+        el.textContent || '',
+      ].join(' ');
+      if (!/stop|停止|终止|abort/i.test(txt)) continue;
+      if (el.disabled) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return el;
+    }
+    return null;
+  }
+
+  /**
+   * 页面现在在生成吗？`'running'` 正在生成 / `'idle'` 已经结束 / `'unknown'` 看不出来。
+   * ⚠️ 只有**明确 running** 才允许拦住"提前取回"（思考链中途停顿的坑就靠它挡）；
+   * `unknown` 必须退回按时间猜 —— 否则选择器一变就永远取不回来了。
+   */
+  function genState() {
+    try {
+      if (findStopButton()) return 'running';
+      if (findSendButton()) return 'idle';
+      return 'unknown';
+    } catch { return 'unknown'; }
+  }
+
   /** 诊断：把页面上像按钮的东西列出来，随回执发给本地服务（写进 debug.log，方便我按实际 DOM 适配） */
   function describeEl(el) {
     const r = el.getBoundingClientRect();
@@ -361,10 +412,29 @@
   }
 
   /**
+   * 这个节点是不是「思考链」（推理过程）里的东西？
+   * ⚠️ **只看一层父级不够**（第一版就是只看一层）：思考链的 class 可能挂在上面两三层。
+   * 为什么非揪住不放 —— 用户实测：**思考链阶段界面才"动"，正式生成阶段界面不推**，
+   * 所以"文本停止变化"极易在思考链尾部成立；漏掉思考链就会把推理过程当正式回答取走。
+   * 所以往上爬到 5 层，任何一层写着 think / reason / cot / 思考 / 思维链 就算。
+   */
+  const THINK_RE = /think|reason|\bcot\b|思维链|思考|推理/i;
+  function isThinkEl(el) {
+    let n = el, depth = 0;
+    while (n && depth < 5) {
+      const attr = String(n.className || '') + ' ' + String(n.id || '')
+        + ' ' + String(n.getAttribute ? (n.getAttribute('data-testid') || '') : '');
+      if (THINK_RE.test(attr)) return true;
+      n = n.parentElement; depth++;
+    }
+    return false;
+  }
+
+  /**
    * 抓最后一条**正式回答**的**容器**（并跳过思考过程）。
-   * ⚠️ 思考模式会先把"思考过程"渲染出来，它常常是同一层 class，
-   * 所以从后往前找、并跳过 class 里带 think/reason/cot 的容器。
-   * 返回元素（取回时要拿它做诊断）；只要文本用 lastReplyText()。
+   * 从后往前找、跳过思考容器；返回元素（取回时要拿它做诊断）；只要文本用 lastReplyText()。
+   * ⚠️ 万一思考链和正式回答**在同一个容器里**（容器 class 不写 think），这里判不出来 ——
+   * 那种情况靠下游的"从第一个分隔符/段落标题开始切"（`trimBeforeFirstToken`）把思考过程切掉。
    */
   function lastReplyEl() {
     const sels = (SITE && SITE.reply) || [];
@@ -374,8 +444,7 @@
       if (!nodes.length) continue;
       for (let i = nodes.length - 1; i >= 0; i--) {
         const el = nodes[i];
-        const cls = String(el.className || '') + ' ' + String((el.parentElement && el.parentElement.className) || '');
-        if (/think|reason|\bcot\b/i.test(cls)) continue;         // 跳过思考过程
+        if (isThinkEl(el)) continue;                             // 跳过思考过程
         if (blockToMarkdown(el)) return el;
       }
     }
@@ -412,7 +481,8 @@
   function hoverLastReply() {
     const el = lastReplyEl();
     if (!el) return;
-    const box = el.closest('[class*="message" i],[class*="chat" i],[class*="answer" i]') || el;
+    let box = el;
+    try { box = el.closest('[class*="message" i],[class*="chat" i],[class*="answer" i]') || el; } catch { /* 不是普通元素就用它自己 */ }
     for (const type of ['pointerover', 'mouseover', 'mouseenter', 'mousemove']) {
       try { box.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true })); } catch { /* 忽略 */ }
     }
@@ -451,8 +521,13 @@
     document.addEventListener('copy', onCopy, true);
 
     try {
-      btn.click();
-      await sleep(600);
+      // ⚠️ 以前是"点一下、死等 600ms"——复制是异步的（页面还要往系统剪贴板写），
+      // 600ms 不够就空手而归 → 退回 DOM 文本 → `###` 标记全丢（真实踩过"分割失灵"）。
+      // 现在改成**轮询等结果**：拿到就立刻返回，最多点 2 次、每次最多等 2.4 秒。
+      for (let attempt = 0; attempt < 2 && !captured; attempt++) {
+        try { btn.click(); } catch { break; }
+        for (let i = 0; i < 12 && !captured; i++) await sleep(200);
+      }
     } finally {
       document.removeEventListener('copy', onCopy, true);
       if (clip && origWrite) { try { clip.writeText = origWrite; } catch { /* 还原失败也无所谓 */ } }
@@ -463,53 +538,127 @@
   /**
    * 取回回复时的页面诊断（随回执进 debug.log）。
    * ⚠️ 为什么要这个：`###` 是 Markdown 标记，页面渲染成标题后 innerText 里就没有了 ——
-   * 到底"模型没输出 ###"还是"输出被渲染掉了"，看这几行就有答案，不用猜。
+   * 到底"模型没输出 ###"、"输出被渲染掉了"还是"只等到思考链"，看这几行就有答案，不用猜。
+   * 另外记**innerText vs textContent 的长度差**：差得多说明有内容没渲染（离屏/虚拟化，见 keepLastReplyVisible）。
    */
-  function readProbe(el, btn, finalText) {
+  function readProbe(el, btn, finalText, why) {
     const out = [];
     try {
+      out.push('等待判据: ' + (why || '（没记录）'));
+      out.push('生成状态: ' + genState()
+        + '（停止按钮 ' + (findStopButton() ? '找到' : '没找到')
+        + ' / 发送按钮 ' + (findSendButton() ? '找到' : '没找到') + '）');
       out.push('复制按钮: ' + (btn ? describeEl(btn) : '没找到'));
       const txt = el ? (el.innerText || el.textContent || '') : '';
-      out.push('回复容器: ' + (el ? describeEl(el) : '没找到'));
+      out.push('回复容器: ' + (el ? describeEl(el) : '没找到') + (el && isThinkEl(el) ? ' ⚠️这是思考链容器' : ''));
+      const it = el ? (el.innerText || '') : '';
+      const tc = el ? (el.textContent || '') : '';
+      out.push('文本长度: innerText ' + it.length + ' / textContent ' + tc.length
+        + (tc.length > it.length * 1.05 ? ' ⚠️差得多，可能有内容没渲染出来' : ''));
+      const r = el ? el.getBoundingClientRect() : null;
+      out.push('容器位置: ' + (r
+        ? Math.round(r.top) + '~' + Math.round(r.bottom) + '（视口高 ' + window.innerHeight + '）' : '无'));
       const hs = el ? Array.from(el.querySelectorAll('h1,h2,h3,h4,h5,h6')) : [];
       out.push('标题标签: ' + (hs.length
         ? hs.map((h) => h.tagName + (h.className ? '.' + String(h.className).split(/\s+/)[0] : '')).slice(0, 8).join(' | ')
         : '0 个 h1~h6'));
       out.push('DOM 文本含 ###: ' + (txt.includes('###') ? '是' : '否')
-        + ' | 大分镜标题行 ' + txt.split('\n').filter((l) => /^[ \t]*大分镜[ \t]*\d/.test(l)).length + ' 条');
+        + ' | 段落标题行 ' + txt.split('\n').filter((l) => /^[ \t]*大分镜[ \t]*\d/.test(l)).length + ' 条');
       out.push('回传文本含 ###: ' + (String(finalText || '').includes('###') ? '是' : '否')
+        + ' | 像正式回答: ' + (expectAllows(finalText, { split: '###', head: '大分镜' }) ? '是' : '否')
         + ' | 前 30 字: ' + JSON.stringify(String(finalText || '').slice(0, 30)));
     } catch (e) { out.push('readProbe 失败: ' + e.message); }
     return out;
   }
 
   /**
-   * 等**这一轮的新回复**写完再取。
-   * ⚠️ 关键：进来时页面上可能还挂着上一条回复，所以要先有"基线"，
-   * **只有内容与基线不同**才算这一轮的新回复 ——
-   * 否则会在几秒内"取回"上一条的旧内容（真实踩过：连续两次取回字数一模一样、第二次只花 6 秒）。
-   * 基线优先用 `askBaseline`（ask 发送前记下的），它比"read 开始时的页面内容"更严格：
-   * read 可能在生成中途才开始，那时页面上的内容已经是"新回复的一部分"了。
+   * 把最后一条回复滚到底部。
+   * ⚠️ **用户实测：正式生成阶段页面不自动推界面，只有思考链阶段会推**。
+   * 不推的后果不只是"看不见"：内容留在视野外，渲染器可能压根不渲染它
+   * （虚拟化 / `content-visibility`），`innerText` 和 `querySelectorAll('h1..h6')` 都会缺内容
+   * → 取回半篇、或者 `###` 补不回来。所以等待期间由**我们替页面滚**。
+   * 只在"整块不在视野里"时才滚，避免无谓打扰。
    */
-  async function waitForReply(timeoutMs, baselineOverride) {
+  function keepLastReplyVisible() {
+    try {
+      const el = lastReplyEl();
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      if (r.bottom <= window.innerHeight && r.top >= 0) return false;
+      el.scrollIntoView({ block: 'end', inline: 'nearest' });
+      return true;
+    } catch { return false; }
+  }
+
+  /**
+   * 这段文本"像正式回答"吗？判据由**前端下发**（`expect.split` 分隔符 / `expect.head` 段落标题开头）：
+   * 脚本不知道预设长什么样、也不该知道 —— 前端把"什么算正式回答"跟着 read 命令一起投过来。
+   * 没给判据就一律放行（不能因为缺判据把功能锁死）。
+   */
+  function expectAllows(text, expect) {
+    if (!expect || (!expect.split && !expect.head)) return true;
+    const t = String(text || '');
+    if (!t.trim()) return false;
+    const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (expect.split && new RegExp('^[ \\t]*' + esc(expect.split), 'm').test(t)) return true;
+    if (expect.head
+      && t.split('\n').some((l) => new RegExp('^[ \\t]*' + esc(expect.head) + '[ \\t]*\\d').test(l))) return true;
+    return false;
+  }
+
+  /**
+   * 等**这一轮的新回复**写完再取。
+   *
+   * 三条判据，按可靠程度排：
+   *   ① **停止按钮**（页面的权威信号）：正在生成就绝不返回；从 running 变 idle 就**立刻**返回，不白等
+   *   ② 文本连续 3 次不变（≈4.5 秒静默）—— 只是兜底，页面信号读不出来时才用
+   *   ③ `expect`：文本得像正式回答（有分隔符 / 有段落标题行），否则继续等
+   *
+   * ⚠️ **为什么不能只信 idle**：停止按钮的选择器没在真机上验证过，万一它一直找不到、
+   * 而 `findSendButton` 又蒙到一个常年可见的按钮，那 genState 会一直报 idle —— 于是"一有内容就取"，
+   * 比现在更糟。所以**只有见过 running，才承认后面的 idle 是"生成结束"**；没见过就退回 ② 静默判据。
+   *
+   * ⚠️ 基线（`askBaseline`）：进来时页面上可能还挂着上一条回复，**只有内容与基线不同**
+   * 才算这一轮的新回复（真实踩过：连续两次取回字数一模一样、第二次只花 6 秒）。
+   *
+   * 返回 `{ text, why }`；`why` 说明"凭什么认为写完了"，会写进 debug.log（别再靠猜）。
+   */
+  async function waitForReply(timeoutMs, baselineOverride, expect) {
     const baseline = baselineOverride || lastReplyText();
     const t0 = Date.now();
     let last = '', stable = 0, seenNew = false;
+    let sawRunning = false, scrolled = 0, lastGen = '';
     while (Date.now() - t0 < timeoutMs) {
-      await sleep(1500);
+      await sleep(1200);
+      if (keepLastReplyVisible()) scrolled++;
+      const gen = genState();
+      lastGen = gen;
+      if (gen === 'running') sawRunning = true;
       const cur = lastReplyText();
-      // 内容还是基线（旧回复）或为空 → 这一轮的回复还没出来，继续等
+      // 还是基线（上一条旧回复）或读不到 → 这一轮的回复还没出来，继续等
       if (!cur || cur === baseline) { stable = 0; continue; }
       seenNew = true;
-      if (cur === last) {
-        stable++;
-        if (stable >= 3 && cur.length > 10) return cur;     // 连续 3 次不变 = 写完了
-      } else {
-        stable = 0;
-        last = cur;
+      if (cur === last) stable++; else { stable = 0; last = cur; }
+
+      if (gen === 'running') continue;                 // ① 页面说还在生成 → 绝不返回
+      if (!stable) continue;
+      const fits = expectAllows(cur, expect);
+      const why = `生成状态=${gen} 静默=${stable}次 滚屏=${scrolled}次`;
+      if (gen === 'idle' && sawRunning && fits) {
+        return { text: cur, why: why + '（页面已结束生成，立即取）' };
       }
+      if (stable >= 3 && fits) {
+        return { text: cur, why: why + '（文本静止，页面信号不可用）' };
+      }
+      // 静默够了但不像正式回答（多半只等到了思考过程）→ 不返回，继续等
     }
-    return seenNew ? last : '';      // 超时：见过新内容就给它，没见过就返回空（调用方会报错）
+    const ok = seenNew && expectAllows(last, expect);
+    return {
+      text: ok ? last : '',
+      why: ok
+        ? `超时兜底 生成状态=${lastGen} 见过新内容`
+        : `超时且没等到"像正式回答"的内容（生成状态=${lastGen}，见过新内容=${seenNew}）`,
+    };
   }
 
   /** 这个页面能不能干活：有输入框或上传控件才算 —— 豆包云盘/设置这类页面什么也没有 */
@@ -572,19 +721,21 @@
         msg = `已投剧情（${String(task.text || '').length} 字）+ ${files}/${plan.length} 个 skill，已发送`
           + (failed.length ? `；没投进去：${failed.join('、')}` : '');
       } else if (task.kind === 'read') {
-        // ① 先等"这一轮的新回复"写完（基线判定，见 waitForReply 注释）
-        const waited = await waitForReply(180000, askBaseline);
-        if (!waited) throw new Error('等了三分钟页面也没出现新回复 —— 确认 AI 已经开始回答');
+        // ① 先等"这一轮的新回复"写完：页面停止按钮（权威）+ 基线 + expect 判据，见 waitForReply
+        const waited = await waitForReply(180000, askBaseline, task.expect);
+        if (!waited.text) {
+          throw new Error(`没等到"像正式回答"的内容（${waited.why}）—— 页面上可能只生成了思考过程`);
+        }
         // ② 再点一次「复制」拿 Markdown 原文：# 号这类标记在渲染后的文本里会消失，
         //    复制出来的才是原文（拿不到就退回上面抓到的 DOM 文本）
         const el = lastReplyEl();
-        const domText = el ? blockToMarkdown(el) : waited;
+        const domText = el ? blockToMarkdown(el) : waited.text;
         const cp = await readByCopy();
         const text = cp.text || domText;
         ok = true;
         result = text;
-        msg = `已取回 ${text.length} 字（${cp.text ? '复制原文' : 'DOM 文本（标记可能已丢）'}）`;
-        probe = readProbe(el, cp.btn, text);      // 每次都记：下次"切不开"能直接看是哪种原因
+        msg = `已取回 ${text.length} 字（${cp.text ? '复制原文' : 'DOM 文本（标记可能已丢）'}；${waited.why}）`;
+        probe = readProbe(el, cp.btn, text, waited.why);   // 每次都记：下次"切不开"直接看是哪种原因
       } else if (task.kind === 'send') {
         const btn = findSendButton();
         if (btn && !btn.disabled) {
