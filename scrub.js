@@ -27,11 +27,12 @@ const FILES = [
 
 // 有序规则表：长/具体的放前面，避免被短的先吃掉。
 // 每条都写成**完整短语**（不是裸的"用户"），所以"用户目录"这类术语不会被误伤。
+// ⚠️ 匹配模式里**不许出现需求方的原话**（这个文件是公开的！）—— 引用一律用 ["“”][^"“”]*["“”] 通配。
 const RULES = [
-  // —— 原话引用（最该去掉的：这是私下说的话）——
+  // —— 引用/口语原话：整句换掉，不保留原话 ——
+  ['引用→中性（转述式）', /用户(?:回|说|要求)["“”][^"“”]*["“”][。.]?现在是/g, '后来改成'],
+  ['引用→中性（弹窗那句）', /用户要求["“”][^"“”]*["“”](?= *——)/g, '要求：**所有弹窗都照这个来**'],
   ['原话：层级要明确', /用户(?:原话|明确要求)"层级要明确不能又被覆盖"/g, '要求"层级要明确、不能被覆盖"'],
-  ['原话：弹窗都这样写', /用户要求["“”]\*{0,2}弹窗都这样写\*{0,2}["“”]/g, '要求：**所有弹窗都照这个来**'],
-  ['原话：3~5 个小分镜', /用户回"你也不能必须 3~5 给小分镜呀"。现在是/g, '后来改成'],
   ['否掉过一次', /（用户明确否掉过一次）/g, '（被否掉过一次）'],
   // —— "谁提的要求"改成中性 ——
   ['用户要求：', /（用户要求：/g, '（'],
@@ -99,7 +100,8 @@ const MUST_BE_ZERO = [
   ['方便我按', /方便我按/],
   ['作品名', /域外恶魔/],
   ['本机用户名', /C:\\Users\\[^\\\s]+/],
-  ['作者真实邮箱', /3312827187@qq\.com|shentu(?!-)/],
+  // ⚠️ 检测规则里**不许写具体值**（这个文件是公开的）—— 只描述"长什么样"
+  ['邮箱样式（应统一为 xxx@localhost）', /[\w.+-]+@(?!localhost)[\w-]+\.(?:com|cn|net|org|io|me)\b/i],
 ];
 
 const FIX = process.argv.includes('--fix');
@@ -148,6 +150,30 @@ for (const f of FILES) {
   }
 }
 console.log(left ? `\n仍剩 ${left} 处 —— 上面这些是"必须为 0"的。` : '\n✅ 高危模式全部为 0。');
+
+// —— 提交信息检查（⚠️ 真栽过：message 会永久留在历史里，还直接显示在 GitHub 文件列表上）——
+console.log('\n════════ 提交信息检查 ════════');
+try {
+  const { spawnSync } = require('child_process');
+  const r = spawnSync('git', ['log', '-n', '30', '--format=%h|%s'], { encoding: 'utf8' });
+  if (r.status !== 0 || !r.stdout) throw new Error('git log 读不到');
+  const bad = [];
+  for (const line of r.stdout.split('\n')) {
+    if (!line.includes('|')) continue;
+    for (const [name, re] of MUST_BE_ZERO) {
+      if (re.test(line)) { bad.push(`${line.split('|')[0]}  「${name}」  ${line.split('|')[1].slice(0, 46)}`); break; }
+    }
+    if (/痕迹|隐私|个人信息/.test(line)) bad.push(`${line.split('|')[0]}  「提到"痕迹/隐私"字样」  ${line.split('|')[1].slice(0, 46)}`);
+  }
+  if (bad.length) {
+    console.log('  ⚠️ 最近 30 条提交信息里有可疑内容（这些会显示在 GitHub 上）：');
+    for (const b of bad) console.log('    ' + b);
+    console.log('  → 改写：git filter-branch -f --msg-filter "node <过滤器>" <起点>..HEAD （然后 force push）');
+  } else console.log('  ✅ 最近 30 条提交信息干净。');
+} catch (e) {
+  console.log(`  （读不到 git 日志，跳过：${e.message}）`);
+  console.log('  推送前请自己看一眼：git log -n 10 --format=%h%n%s%n%b');
+}
 
 // —— push 前体检（不调用 git，纯读文件，任何环境都能跑）——
 console.log('\n════════ push 前体检 ════════');
